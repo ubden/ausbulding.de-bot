@@ -60,5 +60,6 @@ desktop.ini
 *.log
 *.bak
 
+
 # ── PDF geçici Anschreiben (bot tarafından üretilip silinen) ──────────────────
-anschreiben_*.pdf
+Anschreiben.pdf
