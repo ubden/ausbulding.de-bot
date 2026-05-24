@@ -176,6 +176,7 @@ def apply_to_job(
         )
 
         if anschreiben:
+            job["anschreiben_text"] = anschreiben
             # PDF'i her zaman kayıt amacıyla üret; varsa güncel font/metinle yeniden yazar.
             try:
                 pdf_path = generate_anschreiben_pdf(

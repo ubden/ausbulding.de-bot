@@ -1,10 +1,11 @@
 import threading
+import os
 from bot.browser import BrowserManager
 from bot.login import login
 from bot.scraper import scrape_jobs
 from bot.applicator import apply_to_job
 from services.database import upsert_application, job_exists
-from services.telegram_service import build_application_message, send_message
+from services.telegram_service import build_application_message, send_document, send_message
 from utils.i18n import t
 
 
@@ -115,11 +116,12 @@ class BotRunner:
                     error=error_msg or None,
                     pdf_path=pdf_path or None,
                 )
-                self.on_job_done({**job, "status": status})
+                job_result = {**job, "status": status, "pdf_path": pdf_path or None}
+                self.on_job_done(job_result)
 
                 if status == "applied":
                     applied += 1
-                    self._send_telegram_notification(job)
+                    self._send_telegram_notification(job_result)
                 elif status in ("skipped", "already_applied"):
                     skipped += 1
                 else:
@@ -169,6 +171,7 @@ class BotRunner:
             location=job.get("location", ""),
             url=job.get("url", ""),
             lang=self.config.get("lang", "tr"),
+            cover_letter=job.get("anschreiben_text", ""),
         )
 
         def _send():
@@ -178,5 +181,17 @@ class BotRunner:
                 self.log(f"Telegram: bildirim gönderildi — {title}")
             else:
                 self.log(f"Telegram: bildirim gönderilemedi — {err[:100]}")
+                return
+
+            pdf_path = job.get("pdf_path") or ""
+            if not pdf_path or not os.path.isfile(pdf_path):
+                return
+
+            caption = "📄 <b>Anschreiben PDF</b>"
+            doc_ok, doc_err = send_document(token, chat_id, pdf_path, caption=caption)
+            if doc_ok:
+                self.log(f"Telegram: Anschreiben PDF gönderildi — {title}")
+            else:
+                self.log(f"Telegram: PDF gönderilemedi — {doc_err[:100]}")
 
         threading.Thread(target=_send, daemon=True).start()
