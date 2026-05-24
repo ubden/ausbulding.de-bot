@@ -383,7 +383,6 @@ def _is_logged_in(page: Page) -> bool:
 
         for sel in [
             "a[href*='/dashboard/azubi/']",
-            "a:has-text('Profil')",
             "button:has-text('Abmelden')",
             "a:has-text('Abmelden')",
             "button:has-text('Logout')",
