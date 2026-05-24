@@ -142,7 +142,7 @@ def apply_to_job(
         )
 
         if anschreiben:
-            # PDF'i her zaman kayıt amacıyla üret (idempotent — zaten varsa atlar)
+            # PDF'i her zaman kayıt amacıyla üret; varsa güncel font/metinle yeniden yazar.
             try:
                 pdf_path = generate_anschreiben_pdf(
                     anschreiben, title, company, user_info or {}, job_id=job_id
@@ -497,15 +497,63 @@ def _select_pdf_anschreiben(page: Page):
 
 
 def _is_on_review_page(page: Page) -> bool:
-    """Submit butonu görünüyor mu? → review/özet sayfasındayız."""
+    """Gerçek özet/son onay sayfasında mıyız? Sadece submit butonunu kabul et."""
     try:
         loc = page.locator(
-            "[data-testid='second-button'], "
-            "button:has-text('Bewerbung abschicken')"
+            "[data-testid='second-button']:has-text('Bewerbung abschicken'), "
+            "button:has-text('Bewerbung abschicken'), "
+            "button:has-text('Bewerbung senden'), "
+            "button:has-text('Absenden')"
         )
         return loc.count() > 0 and loc.first.is_visible()
     except Exception:
         return False
+
+
+def _has_submit_success_signal(page: Page) -> bool:
+    """Submit sonrası görülen başarı sinyallerini yakala; 431 bu akışta başarılı kabul edilir."""
+    try:
+        body = page.locator("body").inner_text(timeout=3000).lower()
+    except Exception:
+        body = ""
+    try:
+        title = page.title().lower()
+    except Exception:
+        title = ""
+    try:
+        url = page.url.lower()
+    except Exception:
+        url = ""
+
+    blob = "\n".join([body, title, url])
+    success_phrases = [
+        "erfolgreich beworben",
+        "vielen dank",
+        "du hast dich beworben",
+        "bewerbung gesendet",
+        "bewerbung erfolgreich",
+    ]
+    if any(phrase in blob for phrase in success_phrases):
+        return True
+
+    return "431" in blob and any(
+        phrase in blob
+        for phrase in ("request header", "header fields", "fehler", "error", "431")
+    )
+
+
+def _wait_for_review_page(page: Page, stop_event=None, timeout_ms: int = 12000) -> bool:
+    elapsed = 0
+    while elapsed < timeout_ms:
+        if stop_event and stop_event.is_set():
+            return False
+        if _is_on_review_page(page):
+            return True
+        if _has_submit_success_signal(page):
+            return True
+        page.wait_for_timeout(400)
+        elapsed += 400
+    return _is_on_review_page(page)
 
 
 def _get_contact_person(page: Page) -> dict:
@@ -540,10 +588,11 @@ def _get_contact_person(page: Page) -> dict:
 
 def _click_review(page: Page, log, stop_event=None) -> bool:
     """Überprüfen butonuna bas — 3 deneme, her seferinde scroll + bekle.
-    ÖNEMLI: [data-testid='second-button'] buraya giremez — o submit butonudur.
+    Aynı data-testid başka adımlarda da kullanıldığı için metne göre ilerler.
     """
     review_selectors = [
         "button:has-text('Überprüfen')",
+        "[data-testid='second-button']:has-text('Überprüfen')",
         "button:has-text('Weiter zur Übersicht')",
         "button:has-text('Zur Zusammenfassung')",
         "button:has-text('Weiter zur Zusammenfassung')",
@@ -553,17 +602,10 @@ def _click_review(page: Page, log, stop_event=None) -> bool:
         if stop_event and stop_event.is_set():
             return False
 
-        # Zaten review sayfasındaysak (submit butonu görünüyorsa) başarılı say
-        if _is_on_review_page(page):
-            log("    Zaten özet sayfasındayız — Überprüfen adımı atlandı.")
-            return True
-
-        # Her denemede sayfanın altına ve üstüne kaydır
+        # Her denemede alta in; Überprüfen genellikle sticky footer'da.
         try:
             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             page.wait_for_timeout(400)
-            page.evaluate("window.scrollTo(0, 0)")
-            page.wait_for_timeout(300)
         except Exception:
             pass
 
@@ -578,10 +620,15 @@ def _click_review(page: Page, log, stop_event=None) -> bool:
                 _scroll_to(page, btn)
                 btn.click()
                 log(f"    Überprüfen tıklandı (deneme {attempt + 1}).")
-                page.wait_for_timeout(2000)
+                _wait_for_review_page(page, stop_event, timeout_ms=10000)
                 return True
             except Exception:
                 continue
+
+        # Ancak gerçek submit butonu görünüyorsa review adımı zaten geçilmiş demektir.
+        if _is_on_review_page(page):
+            log("    Özet sayfası tespit edildi — Bewerbung abschicken bekleniyor.")
+            return True
 
         log(f"    Überprüfen butonu bulunamadı (deneme {attempt + 1}/3), bekleniyor...")
         page.wait_for_timeout(2000)
@@ -596,22 +643,25 @@ def _click_review(page: Page, log, stop_event=None) -> bool:
 
 
 def _confirm_submit(page: Page, log, stop_event=None) -> bool:
-    """Bewerbung abschicken — 3 deneme, her seferinde scroll + bekle."""
-    _wait(page, 2000, stop_event)
+    """Bewerbung abschicken butonunu bekle, bas ve submit sonrası sonucu doğrula."""
+    _wait(page, 800, stop_event)
 
     confirm_selectors = [
         "[data-testid='second-button']:has-text('Bewerbung abschicken')",
         "button:has-text('Bewerbung abschicken')",
-        "button:has-text('Jetzt bewerben')",
-        "button:has-text('Absenden')",
         "button:has-text('Bewerbung senden')",
+        "[data-testid='second-button']:has-text('Absenden')",
+        "button:has-text('Absenden')",
         "button:has-text('Senden')",
     ]
 
     submitted = False
-    for attempt in range(3):
+    for attempt in range(1, 7):
         if stop_event and stop_event.is_set():
             return False
+        if _has_submit_success_signal(page):
+            log("    Başvuru başarı sinyali görüldü.")
+            return True
 
         # Sayfanın altına in — buton genellikle sticky footer'da
         try:
@@ -631,35 +681,25 @@ def _confirm_submit(page: Page, log, stop_event=None) -> bool:
                     continue
                 _scroll_to(page, btn)
                 btn.click()
-                log(f"    'Bewerbung abschicken' tıklandı (deneme {attempt + 1}).")
+                log(f"    'Bewerbung abschicken' tıklandı (deneme {attempt}).")
                 clicked = True
                 submitted = True
-                _wait(page, 3000, stop_event)
+                _wait(page, 3500, stop_event)
                 break
             except Exception:
                 continue
 
         if clicked:
-            # Başarı sayfasına geçildi mi kontrol et
-            try:
-                body = page.locator("body").inner_text(timeout=3000)
-                for phrase in [
-                    "erfolgreich beworben", "Vielen Dank",
-                    "Du hast dich beworben", "Bewerbung gesendet",
-                    "Bewerbung erfolgreich",
-                ]:
-                    if phrase.lower() in body.lower():
-                        log("    Başvuru başarı sayfası doğrulandı.")
-                        return True
-            except Exception:
-                pass
+            if _has_submit_success_signal(page):
+                log("    Başvuru başarı sayfası doğrulandı.")
+                return True
             # Başarı metni yoksa 2. onay adımı olabilir — döngü devam eder
         else:
-            if attempt < 2:
-                log(f"    Onay butonu bulunamadı (deneme {attempt + 1}/3), bekleniyor...")
-                page.wait_for_timeout(2000)
+            if attempt < 6:
+                log(f"    Onay butonu bekleniyor (deneme {attempt}/6)...")
+                page.wait_for_timeout(1500)
             else:
-                log("    'Bewerbung abschicken' 3 denemede de bulunamadı.")
+                log("    'Bewerbung abschicken' 6 denemede de bulunamadı.")
                 return False
 
     return submitted

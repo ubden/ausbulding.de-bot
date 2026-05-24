@@ -3,6 +3,7 @@ import re
 import sys
 import tempfile
 from datetime import datetime
+from html import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.lib.styles import ParagraphStyle
@@ -14,26 +15,102 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 # ── Font ────────────────────────────────────────────────────────────
 _FONT_REGISTERED = False
+_FONT_NAME = "AusbildungSans"
+
 
 def _ensure_font() -> str:
     global _FONT_REGISTERED
     if _FONT_REGISTERED:
-        return "Arial"
+        return _FONT_NAME
     candidates = [
-        r"C:\Windows\Fonts\arial.ttf",
-        r"C:\Windows\Fonts\calibri.ttf",
-        r"C:\Windows\Fonts\verdana.ttf",
+        (
+            r"C:\Windows\Fonts\arial.ttf",
+            r"C:\Windows\Fonts\arialbd.ttf",
+            r"C:\Windows\Fonts\ariali.ttf",
+            r"C:\Windows\Fonts\arialbi.ttf",
+        ),
+        (
+            r"C:\Windows\Fonts\calibri.ttf",
+            r"C:\Windows\Fonts\calibrib.ttf",
+            r"C:\Windows\Fonts\calibrii.ttf",
+            r"C:\Windows\Fonts\calibriz.ttf",
+        ),
+        (
+            r"C:\Windows\Fonts\segoeui.ttf",
+            r"C:\Windows\Fonts\segoeuib.ttf",
+            r"C:\Windows\Fonts\segoeuii.ttf",
+            r"C:\Windows\Fonts\segoeuiz.ttf",
+        ),
+        (
+            r"C:\Windows\Fonts\verdana.ttf",
+            r"C:\Windows\Fonts\verdanab.ttf",
+            r"C:\Windows\Fonts\verdanai.ttf",
+            r"C:\Windows\Fonts\verdanaz.ttf",
+        ),
     ]
-    for path in candidates:
-        if os.path.exists(path):
-            name = os.path.splitext(os.path.basename(path))[0].capitalize()
+    for normal_path, bold_path, italic_path, bold_italic_path in candidates:
+        if os.path.exists(normal_path):
             try:
-                pdfmetrics.registerFont(TTFont(name, path))
+                pdfmetrics.registerFont(TTFont(_FONT_NAME, normal_path))
+                pdfmetrics.registerFont(TTFont(f"{_FONT_NAME}-Bold", bold_path if os.path.exists(bold_path) else normal_path))
+                pdfmetrics.registerFont(TTFont(f"{_FONT_NAME}-Italic", italic_path if os.path.exists(italic_path) else normal_path))
+                pdfmetrics.registerFont(TTFont(f"{_FONT_NAME}-BoldItalic", bold_italic_path if os.path.exists(bold_italic_path) else normal_path))
+                pdfmetrics.registerFontFamily(
+                    _FONT_NAME,
+                    normal=_FONT_NAME,
+                    bold=f"{_FONT_NAME}-Bold",
+                    italic=f"{_FONT_NAME}-Italic",
+                    boldItalic=f"{_FONT_NAME}-BoldItalic",
+                )
                 _FONT_REGISTERED = True
-                return name
+                return _FONT_NAME
             except Exception:
                 continue
     return "Helvetica"
+
+
+def _normalize_german_chars(text: str) -> str:
+    """Common ASCII transliterations from LLM output into proper German spelling."""
+    if not text:
+        return ""
+    replacements = {
+        r"strasse\b": "straße",
+        r"Strasse\b": "Straße",
+        r"\bfuer\b": "für",
+        r"\bFuer\b": "Für",
+        r"\bueber\b": "über",
+        r"\bUeber\b": "Über",
+        r"\bmoechte\b": "möchte",
+        r"\bMoechte\b": "Möchte",
+        r"\bmoechten\b": "möchten",
+        r"\bMoechten\b": "Möchten",
+        r"\bkoennte\b": "könnte",
+        r"\bKoennte\b": "Könnte",
+        r"\bkoennen\b": "können",
+        r"\bKoennen\b": "Können",
+        r"\bwuerde\b": "würde",
+        r"\bWuerde\b": "Würde",
+        r"\bwaere\b": "wäre",
+        r"\bWaere\b": "Wäre",
+        r"\bgroesse\b": "größe",
+        r"\bGroesse\b": "Größe",
+        r"\bgrossen\b": "großen",
+        r"\bGrossen\b": "Großen",
+        r"\bgrosses\b": "großes",
+        r"\bGrosses\b": "Großes",
+        r"\bgross\b": "groß",
+        r"\bGross\b": "Groß",
+        r"\bGruesse\b": "Grüße",
+        r"\bGruessen\b": "Grüßen",
+        r"\bgruessen\b": "grüßen",
+    }
+    for pattern, repl in replacements.items():
+        text = re.sub(pattern, repl, text)
+    return text
+
+
+def _xml(text: str) -> str:
+    return escape(_normalize_german_chars(str(text or "")), quote=False)
 
 
 # ── Paths ────────────────────────────────────────────────────────────
@@ -76,15 +153,13 @@ def generate_anschreiben_pdf(
     Alman başvuru formatında PDF üret.
 
     • job_id verilirse: anschreibens/<job_id>/Anschreiben.pdf olarak kaydeder.
-      Aynı job_id için daha önce üretilmişse mevcut dosyayı döndürür (idempotent).
+      Dosya varsa güncel font/karakter ayarlarıyla yeniden yazar.
     • job_id verilmezse: geçici dosya kullanılır (eski davranış).
 
     Döndürdüğü string: oluşturulan veya mevcut PDF'in tam yolu.
     """
     if job_id:
         out_path = get_anschreiben_path(job_id)
-        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-            return out_path   # zaten mevcut — yeniden üretme
     else:
         tmp = tempfile.NamedTemporaryFile(suffix=".pdf", prefix="anschreiben_", delete=False)
         tmp.close()
@@ -103,6 +178,9 @@ def _write_pdf(
 ) -> None:
     """PDF içeriğini out_path'e yaz."""
     font = _ensure_font()
+    anschreiben_text = _normalize_german_chars(anschreiben_text)
+    job_title = _normalize_german_chars(job_title)
+    company = _normalize_german_chars(company)
 
     vorname  = user_info.get("vorname", "")
     nachname = user_info.get("nachname", "")
@@ -130,38 +208,37 @@ def _write_pdf(
     story = []
 
     # Gönderici
-    story.append(Paragraph(f"<b>{full_name}</b>", normal))
+    story.append(Paragraph(f"<b>{_xml(full_name)}</b>", normal))
     if strasse:
-        story.append(Paragraph(strasse, normal))
+        story.append(Paragraph(_xml(strasse), normal))
     if plz or stadt:
-        story.append(Paragraph(f"{plz} {stadt}".strip(), normal))
+        story.append(Paragraph(_xml(f"{plz} {stadt}".strip()), normal))
     if email:
-        story.append(Paragraph(email, small))
+        story.append(Paragraph(_xml(email), small))
     story.append(Spacer(1, 0.4 * cm))
 
     # Tarih
-    story.append(Paragraph(f"{stadt or 'Stadt'}, {datum}", right))
+    story.append(Paragraph(_xml(f"{stadt or 'Stadt'}, {datum}"), right))
     story.append(Spacer(1, 0.8 * cm))
 
     # Alıcı
     if company:
-        story.append(Paragraph(f"<b>{company}</b>", normal))
+        story.append(Paragraph(f"<b>{_xml(company)}</b>", normal))
     story.append(Spacer(1, 0.8 * cm))
 
     # Konu
     betreff = f"Bewerbung als: {job_title}" if job_title else "Bewerbung"
-    story.append(Paragraph(f"<b>{betreff}</b>", subj))
+    story.append(Paragraph(f"<b>{_xml(betreff)}</b>", subj))
     story.append(Spacer(1, 0.4 * cm))
 
     # Metin
     for p in [p.strip() for p in anschreiben_text.split("\n") if p.strip()]:
-        p_safe = p.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        story.append(Paragraph(p_safe, normal))
+        story.append(Paragraph(_xml(p), normal))
         story.append(Spacer(1, 0.2 * cm))
 
     story.append(Spacer(1, 0.8 * cm))
     story.append(Paragraph("Mit freundlichen Grüßen,", normal))
     story.append(Spacer(1, 1.2 * cm))
-    story.append(Paragraph(f"<b>{full_name}</b>", normal))
+    story.append(Paragraph(f"<b>{_xml(full_name)}</b>", normal))
 
     doc.build(story)

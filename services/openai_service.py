@@ -38,6 +38,8 @@ def generate_anschreiben(
             "- Maximal 4 Sätze, flüssig und natürlich klingend\n"
             "- Beziehe dich auf konkrete Details aus der Stellenbeschreibung\n"
             "- Klingt wie ein echter junger Mensch, nicht wie eine KI\n"
+            "- Verwende deutsche Sonderzeichen korrekt: ä, ö, ü, Ä, Ö, Ü und ß\n"
+            "- Schreibe z.B. 'für', 'möchte', 'Grüßen', nicht 'fuer', 'moechte', 'Gruessen'\n"
             "- Keine generischen Phrasen wie 'hohe Motivation' oder 'teamfähig'\n"
             "- Kein Betreff, keine Anrede, keine Grußformel, kein Name\n"
             "- Antworte NUR mit dem Anschreiben-Text, sonst nichts"
