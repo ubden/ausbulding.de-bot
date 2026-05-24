@@ -5,6 +5,7 @@ Harici bağımlılık yok: sadece stdlib urllib kullanılır.
 
 import json
 import os
+import ssl
 import urllib.request
 import urllib.error
 from datetime import datetime
@@ -12,6 +13,39 @@ from html import escape
 
 
 _BASE = "https://api.telegram.org/bot{token}/{method}"
+
+
+def _ssl_context():
+    """
+    Windows sunucularda PyInstaller/OpenSSL bazen sistem sertifika deposunu görmez.
+    truststore varsa OS sertifika deposunu, yoksa certifi CA bundle'ını kullan.
+    """
+    try:
+        import truststore
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except Exception:
+        pass
+
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
+def _format_network_error(err: Exception) -> str:
+    text = str(err)
+    reason = getattr(err, "reason", None)
+    reason_text = str(reason) if reason is not None else text
+    if isinstance(reason, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in reason_text:
+        return (
+            "SSL sertifika doğrulaması başarısız. Server'da HTTPS trafiğini "
+            "denetleyen proxy/antivirüs self-signed sertifika kullanıyor olabilir. "
+            "Proxy/root sertifikasını Windows Trusted Root'a yükleyin veya sistem "
+            "yöneticinizden api.telegram.org için geçerli sertifika zinciri isteyin. "
+            f"Detay: {reason_text[:180]}"
+        )
+    return text
 
 
 def _post(token: str, method: str, payload: dict, timeout: int = 10) -> tuple[bool, str]:
@@ -22,7 +56,7 @@ def _post(token: str, method: str, payload: dict, timeout: int = 10) -> tuple[bo
         headers={"Content-Type": "application/json; charset=utf-8"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()):
             return True, ""
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
@@ -31,8 +65,10 @@ def _post(token: str, method: str, payload: dict, timeout: int = 10) -> tuple[bo
         except Exception:
             msg = body[:200]
         return False, msg
+    except urllib.error.URLError as e:
+        return False, _format_network_error(e)
     except Exception as e:
-        return False, str(e)
+        return False, _format_network_error(e)
 
 
 def _post_multipart(
@@ -76,7 +112,7 @@ def _post_multipart(
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout):
+        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()):
             return True, ""
     except urllib.error.HTTPError as e:
         resp_body = e.read().decode("utf-8", errors="replace")
@@ -85,8 +121,10 @@ def _post_multipart(
         except Exception:
             msg = resp_body[:200]
         return False, msg
+    except urllib.error.URLError as e:
+        return False, _format_network_error(e)
     except Exception as e:
-        return False, str(e)
+        return False, _format_network_error(e)
 
 
 def send_message(

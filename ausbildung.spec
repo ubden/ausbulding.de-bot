@@ -8,15 +8,25 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 block_cipher = None
 
+
+def safe_collect_all(package_name):
+    try:
+        return collect_all(package_name)
+    except Exception:
+        return [], [], []
+
+
 # ── Veri / binary toplama ──────────────────────────────────────────────────
 ctk_datas,     ctk_bins,  ctk_hidden  = collect_all("customtkinter")
 pw_datas,      pw_bins,   pw_hidden   = collect_all("playwright")
 rl_datas,      rl_bins,   rl_hidden   = collect_all("reportlab")
 pil_datas,     pil_bins,  pil_hidden  = collect_all("PIL")
+certifi_datas, certifi_bins, certifi_hidden = safe_collect_all("certifi")
+trust_datas,   trust_bins,   trust_hidden   = safe_collect_all("truststore")
 
-all_datas    = ctk_datas + pw_datas + rl_datas + pil_datas
-all_binaries = ctk_bins  + pw_bins  + rl_bins  + pil_bins
-all_hidden   = ctk_hidden + pw_hidden + rl_hidden + pil_hidden + [
+all_datas    = ctk_datas + pw_datas + rl_datas + pil_datas + certifi_datas + trust_datas
+all_binaries = ctk_bins  + pw_bins  + rl_bins  + pil_bins + certifi_bins  + trust_bins
+all_hidden   = ctk_hidden + pw_hidden + rl_hidden + pil_hidden + certifi_hidden + trust_hidden + [
     # Tkinter
     "tkinter", "tkinter.messagebox", "tkinter.filedialog",
     # Playwright
@@ -24,6 +34,8 @@ all_hidden   = ctk_hidden + pw_hidden + rl_hidden + pil_hidden + [
     "playwright._impl._driver",
     # OpenAI
     "openai", "openai.types", "httpx", "anyio", "sniffio",
+    # TLS certificates
+    "certifi", "truststore",
     # ReportLab
     "reportlab", "reportlab.lib", "reportlab.lib.styles",
     "reportlab.lib.enums", "reportlab.lib.units",
