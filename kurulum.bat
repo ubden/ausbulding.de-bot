@@ -9,33 +9,53 @@ echo ============================================================
 echo.
 
 :: Bu exe'nin yanindaki playwright_browsers klasorunu kullan
-set PLAYWRIGHT_BROWSERS_PATH=%~dp0playwright_browsers
+set "PLAYWRIGHT_BROWSERS_PATH=%~dp0playwright_browsers"
+set "APP_DIR=%~dp0"
+set "INTERNAL_DIR=%APP_DIR%_internal"
 
 echo [*] Hedef klasor: %PLAYWRIGHT_BROWSERS_PATH%
 echo.
 
-:: playwright CLI'yi bul (exe yaninda ya da Python env'de)
-set PW_EXE=%~dp0_internal\playwright\_impl\_driver\playwright.exe
-if not exist "%PW_EXE%" (
-    :: Gelistirme ortami — pip ile kurulu playwright
-    set PW_EXE=playwright
+if not exist "%PLAYWRIGHT_BROWSERS_PATH%" (
+    mkdir "%PLAYWRIGHT_BROWSERS_PATH%" >nul 2>&1
 )
+
+:: PyInstaller paketinin icindeki Playwright driver'i kullan.
+:: Kullanici makinesinde Python veya global playwright kurulu olmak zorunda degil.
+set "NODE_EXE=%INTERNAL_DIR%\playwright\driver\node.exe"
+set "PW_CLI=%INTERNAL_DIR%\playwright\driver\package\cli.js"
 
 echo [*] Chromium indiriliyor...
-"%PW_EXE%" install chromium
-
-if errorlevel 1 (
-    echo.
-    echo [!] playwright.exe bulunamadi, Python uzerinden deneniyor...
-    python -m playwright install chromium
+if exist "%NODE_EXE%" if exist "%PW_CLI%" (
+    "%NODE_EXE%" "%PW_CLI%" install chromium
+    goto CHECK_INSTALL
 )
 
+echo [!] Paket icindeki Playwright driver bulunamadi.
+echo     Beklenen:
+echo       %NODE_EXE%
+echo       %PW_CLI%
+echo.
+echo [*] Gelistirme ortami fallback deneniyor...
+where playwright >nul 2>&1
+if not errorlevel 1 (
+    playwright install chromium
+    goto CHECK_INSTALL
+)
+
+python -m playwright install chromium
+
+:CHECK_INSTALL
 if errorlevel 1 (
     echo.
     echo [HATA] Chromium yuklenemedi.
-    echo Python ve Playwright yuklu oldugundan emin olun:
+    echo Paket eksik olabilir veya internet baglantisi engellenmis olabilir.
+    echo Release ZIP'i tam cikardiginizdan ve bu dosyayi
+    echo AusbildungBot.exe ile ayni klasorden calistirdiginizdan emin olun.
+    echo.
+    echo Gelistirme ortami icin:
     echo   pip install playwright
-    echo   playwright install chromium
+    echo   python -m playwright install chromium
     pause
     exit /b 1
 )
