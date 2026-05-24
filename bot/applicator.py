@@ -54,13 +54,15 @@ def apply_to_job(
     url     = job.get("url", "")
     job_id  = job.get("job_id", "")
 
+    pdf_path: str | None = None   # will be set when a PDF is generated
+
     _log(f"  → {title} @ {company}")
 
     try:
         page.goto(url, wait_until="domcontentloaded")
         _wait(page, 2500, stop_event)
         if _stopped():
-            return "skipped", ""
+            return "skipped", "", pdf_path
 
         # İlan açıklamasını ve kontakt kişiyi forma girmeden önce al
         job_description = _get_job_description(page)
@@ -85,20 +87,20 @@ def apply_to_job(
         page.evaluate("window.scrollTo(0, 0)")
         if _is_already_applied(page):
             _log("    Zaten başvurulmuş, atlanıyor.")
-            return "already_applied", ""
+            return "already_applied", "", pdf_path
 
         # Başvuru butonunu bul
         if not _click_apply_button(page, _log, stop_event):
-            return "skipped", ""
+            return "skipped", "", pdf_path
 
         _wait(page, 3000, stop_event)
         if _stopped():
-            return "skipped", ""
+            return "skipped", "", pdf_path
 
         # Form başladı mı?
         if not _is_on_form(page):
             _log("    Başvuru formu yüklenemedi.")
-            return "error", "Form yüklenemedi"
+            return "error", "Form yüklenemedi", pdf_path
 
         # ── Adım 1: Kişisel veriler ────────────────────────────────
         _log("    Adım 1: Kişisel veriler...")
@@ -130,7 +132,7 @@ def apply_to_job(
         # PDF upload gerektiriyor mu? skip_pdf_anschreiben açıksa atla
         if skip_pdf_anschreiben and _has_anschreiben_upload(page):
             _log("    PDF Anschreiben gerekli — 'Anschreiben atla' açık, atlanıyor.")
-            return "skipped", "PDF Anschreiben gerekli, atlandı"
+            return "skipped", "PDF Anschreiben gerekli, atlandı", None
 
         _click_profile_import(page, "Lebenslauf", _log)
         _wait(page, 1500, stop_event)
@@ -140,16 +142,24 @@ def apply_to_job(
         )
 
         if anschreiben:
-            # Her zaman metin alanını doldur (Kurz-Anschreiben)
+            # PDF'i her zaman kayıt amacıyla üret (idempotent — zaten varsa atlar)
+            try:
+                pdf_path = generate_anschreiben_pdf(
+                    anschreiben, title, company, user_info or {}, job_id=job_id
+                )
+                _log(f"    Anschreiben PDF kaydedildi: {os.path.basename(os.path.dirname(pdf_path))}/")
+            except Exception as e:
+                _log(f"    PDF oluşturma hatası: {e}")
+                pdf_path = None
+
+            # Metin alanını doldur (Kurz-Anschreiben)
             _fill_anschreiben_humanlike(page, anschreiben, _log, stop_event)
             _wait(page, 800, stop_event)
-            # Ayrıca PDF upload alanı varsa yükle (bağımsız)
-            if _has_anschreiben_upload(page):
-                _log("    PDF Anschreiben upload alanı bulundu — PDF oluşturuluyor...")
-                _upload_anschreiben_pdf(
-                    page, anschreiben, title, company,
-                    user_info or {}, _log
-                )
+
+            # PDF upload alanı varsa yükle (zaten oluşturulmuş PDF'i kullan)
+            if pdf_path and _has_anschreiben_upload(page):
+                _log("    PDF Anschreiben upload alanı bulundu — yükleniyor...")
+                _upload_pdf_file(page, pdf_path, _log)
         else:
             _log("    Anschreiben üretilemedi, boş bırakıldı.")
 
@@ -157,7 +167,7 @@ def apply_to_job(
         _wait(page, 1000, stop_event)
         _next_step(page, stop_event)
         if _stopped():
-            return "skipped", ""
+            return "skipped", "", pdf_path
 
         # ── Adım 5: Dosyalar ──────────────────────────────────────
         _log("    Adım 5: Dosyalar kontrol ediliyor...")
@@ -167,16 +177,16 @@ def apply_to_job(
         _click_profile_import(page, "Zeugnisse", _log)
         _wait(page, 800, stop_event)
         if _stopped():
-            return "skipped", ""
+            return "skipped", "", pdf_path
 
         # ── Überprüfen ────────────────────────────────────────────
         review_ok = _click_review(page, _log, stop_event)
         if not review_ok and not _is_on_review_page(page):
-            return "error", "Überprüfen butonu bulunamadı"
+            return "error", "Überprüfen butonu bulunamadı", pdf_path
 
         _wait(page, 2500, stop_event)
         if _stopped():
-            return "skipped", ""
+            return "skipped", "", pdf_path
 
         # ── Onay ──────────────────────────────────────────────────
         submitted = _confirm_submit(page, _log, stop_event)
@@ -188,21 +198,21 @@ def apply_to_job(
             _wait(page, 2500, stop_event)
             if _is_already_applied(page):
                 _log("    ✓ Başvuru onaylandı (Bereits beworben görünüyor).")
-                return "applied", ""
+                return "applied", "", pdf_path
         except Exception:
             pass
 
         if submitted:
             _log("    Başvuru gönderildi!")
-            return "applied", ""
+            return "applied", "", pdf_path
 
-        return "error", "Bewerbung abschicken başarısız"
+        return "error", "Bewerbung abschicken başarısız", pdf_path
 
     except Exception as e:
         if _stopped():
-            return "skipped", ""
+            return "skipped", "", pdf_path
         _log(f"    HATA: {e}")
-        return "error", str(e)
+        return "error", str(e), pdf_path
 
 
 # ── Yardımcı fonksiyonlar ─────────────────────────────────────────
@@ -411,84 +421,64 @@ def _has_anschreiben_upload(page: Page) -> bool:
         return False
 
 
-def _upload_anschreiben_pdf(
-    page: Page,
-    anschreiben_text: str,
-    job_title: str,
-    company: str,
-    user_info: dict,
-    log,
-):
-    """PDF üret ve Anschreiben upload alanına yükle."""
-    pdf_path = None
+def _upload_pdf_file(page: Page, pdf_path: str, log):
+    """Zaten var olan bir PDF dosyasını Anschreiben upload alanına yükle.
+    PDF üretme veya silme işlemi yapmaz — sadece upload eder."""
+    if not os.path.exists(pdf_path):
+        log("    PDF dosyası bulunamadı — upload atlandı.")
+        return
+
+    uploaded = False
+
+    # Yöntem 1: Dropzone içindeki gizli input[type=file]'ı JS ile bul
     try:
-        pdf_path = generate_anschreiben_pdf(
-            anschreiben_text, job_title, company, user_info
-        )
-        log(f"    PDF oluşturuldu: {os.path.basename(pdf_path)}")
+        file_handle = page.evaluate_handle("""() => {
+            const btns = [...document.querySelectorAll('button')];
+            const uploadBtn = btns.find(
+                b => b.textContent.trim().includes('Upload Anschreiben')
+            );
+            if (!uploadBtn) return null;
+            let node = uploadBtn;
+            for (let i = 0; i < 8; i++) {
+                node = node.parentElement;
+                if (!node) break;
+                const inp = node.querySelector('input[type="file"]');
+                if (inp) return inp;
+            }
+            return null;
+        }""")
+        el = file_handle.as_element()
+        if el is not None:
+            el.set_input_files(pdf_path)
+            log("    PDF yüklendi ('Upload Anschreiben' dropzone).")
+            page.wait_for_timeout(2000)
+            uploaded = True
+    except Exception:
+        pass
 
-        uploaded = False
-
-        # Yöntem 1: "Upload Anschreiben" butonunun dropzone container'ı içindeki
-        # gizli input[type=file]'ı JS ile bul ve doğrudan set_input_files yap.
-        # Bu, Dropzone bileşenlerinde en güvenilir yoldur.
-        try:
-            file_handle = page.evaluate_handle("""() => {
-                const btns = [...document.querySelectorAll('button')];
-                const uploadBtn = btns.find(
-                    b => b.textContent.trim().includes('Upload Anschreiben')
-                );
-                if (!uploadBtn) return null;
-                let node = uploadBtn;
-                for (let i = 0; i < 8; i++) {
-                    node = node.parentElement;
-                    if (!node) break;
-                    const inp = node.querySelector('input[type="file"]');
-                    if (inp) return inp;
-                }
-                return null;
-            }""")
-            el = file_handle.as_element()
-            if el is not None:
-                el.set_input_files(pdf_path)
-                log("    PDF yüklendi ('Upload Anschreiben' dropzone).")
+    # Yöntem 2: Butona tıklayıp native file chooser yakala
+    if not uploaded:
+        for sel in [
+            "button:has-text('Upload Anschreiben')",
+            "label:has-text('Upload Anschreiben')",
+        ]:
+            try:
+                btn = page.locator(sel).first
+                if btn.count() == 0 or not btn.is_visible():
+                    continue
+                _scroll_to(page, btn)
+                with page.expect_file_chooser(timeout=6000) as fc_info:
+                    btn.click()
+                fc_info.value.set_files(pdf_path)
+                log("    PDF yüklendi (file chooser).")
                 page.wait_for_timeout(2000)
                 uploaded = True
-        except Exception:
-            pass
-
-        # Yöntem 2: Butona tıklayıp native file chooser yakala
-        if not uploaded:
-            for sel in [
-                "button:has-text('Upload Anschreiben')",
-                "label:has-text('Upload Anschreiben')",
-            ]:
-                try:
-                    btn = page.locator(sel).first
-                    if btn.count() == 0 or not btn.is_visible():
-                        continue
-                    _scroll_to(page, btn)
-                    with page.expect_file_chooser(timeout=6000) as fc_info:
-                        btn.click()
-                    fc_info.value.set_files(pdf_path)
-                    log("    PDF yüklendi (file chooser).")
-                    page.wait_for_timeout(2000)
-                    uploaded = True
-                    break
-                except Exception:
-                    continue
-
-        if not uploaded:
-            log("    PDF upload alanı bulunamadı — manuel yükleme gerekebilir.")
-
-    except Exception as e:
-        log(f"    PDF oluşturma/yükleme hatası: {e}")
-    finally:
-        if pdf_path and os.path.exists(pdf_path):
-            try:
-                os.remove(pdf_path)
+                break
             except Exception:
-                pass
+                continue
+
+    if not uploaded:
+        log("    PDF upload alanı bulunamadı — manuel yükleme gerekebilir.")
 
 
 def _select_pdf_anschreiben(page: Page):

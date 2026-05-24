@@ -92,7 +92,7 @@ class BotRunner:
                     continue
 
                 self.log(f"[{i}/{len(jobs)}] {t('RUNNER_APPLYING')} {job['title'][:60]}")
-                status, error_msg = apply_to_job(
+                status, error_msg, pdf_path = apply_to_job(
                     page,
                     job,
                     openai_key=cfg.get("openai_key", ""),
@@ -111,6 +111,7 @@ class BotRunner:
                     url=job["url"],
                     status=status,
                     error=error_msg or None,
+                    pdf_path=pdf_path or None,
                 )
                 self.on_job_done({**job, "status": status})
 

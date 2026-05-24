@@ -30,9 +30,15 @@ def init_db() -> None:
                 status TEXT,
                 error_message TEXT,
                 applied_at DATETIME,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                pdf_path TEXT
             )
         """)
+        # Sütun zaten varsa ALTER TABLE sessizce başarısız olur — güvenli migration
+        try:
+            conn.execute("ALTER TABLE applications ADD COLUMN pdf_path TEXT")
+        except Exception:
+            pass
         conn.execute("""
             CREATE TABLE IF NOT EXISTS contacts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,19 +65,22 @@ def upsert_application(
     url: str,
     status: str,
     error: str = None,
+    pdf_path: str = None,
 ) -> None:
     applied_at = datetime.now().isoformat() if status == "applied" else None
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO applications (job_id, title, company, location, url, status, error_message, applied_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO applications
+                (job_id, title, company, location, url, status, error_message, applied_at, pdf_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id) DO UPDATE SET
-                status = excluded.status,
+                status        = excluded.status,
                 error_message = excluded.error_message,
-                applied_at = COALESCE(excluded.applied_at, applied_at)
+                applied_at    = COALESCE(excluded.applied_at, applied_at),
+                pdf_path      = COALESCE(excluded.pdf_path, pdf_path)
             """,
-            (job_id, title, company, location, url, status, error, applied_at),
+            (job_id, title, company, location, url, status, error, applied_at, pdf_path),
         )
         conn.commit()
 
@@ -89,10 +98,10 @@ def job_exists(job_id: str) -> bool:
 def get_all_applications() -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT job_id, title, company, location, url, status, error_message, applied_at, created_at "
+            "SELECT job_id, title, company, location, url, status, error_message, applied_at, created_at, pdf_path "
             "FROM applications ORDER BY created_at DESC"
         ).fetchall()
-    keys = ["job_id", "title", "company", "location", "url", "status", "error_message", "applied_at", "created_at"]
+    keys = ["job_id", "title", "company", "location", "url", "status", "error_message", "applied_at", "created_at", "pdf_path"]
     return [dict(zip(keys, row)) for row in rows]
 
 

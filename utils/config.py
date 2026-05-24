@@ -34,6 +34,11 @@ DEFAULTS = {
         "password": "",
         "use_tls": True,
     },
+    "telegram": {
+        "enabled":  False,
+        "token":    "",
+        "chat_id":  "",
+    },
 }
 
 

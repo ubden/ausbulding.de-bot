@@ -195,12 +195,71 @@ _T: dict[str, dict[str, str]] = {
     "APPS_S_ERROR":           {"tr": "Hata",                           "de": "Fehler",                              "en": "Error"},
     "APPS_S_PENDING":         {"tr": "Beklemede",                      "de": "Ausstehend",                          "en": "Pending"},
     "APPS_EMPTY":             {"tr": "Henüz başvuru kaydı yok.",       "de": "Noch keine Bewerbungen vorhanden.",    "en": "No application records yet."},
+    "APPS_PDF_BTN":           {"tr": "📄",                             "de": "📄",                                  "en": "📄"},
+    "APPS_PDF_TITLE":         {"tr": "Anschreiben Önizleme",           "de": "Anschreiben Vorschau",                "en": "Anschreiben Preview"},
+    "APPS_PDF_OPEN_SYS":      {"tr": "🖨  Sistemde Aç",               "de": "🖨  Im System öffnen",               "en": "🖨  Open in System"},
+    "APPS_PDF_CLOSE":         {"tr": "✕  Kapat",                      "de": "✕  Schließen",                       "en": "✕  Close"},
+    "APPS_PDF_NO_FITZ":       {"tr": "PyMuPDF kurulu değil.\nPDF önizleme için: pip install PyMuPDF",
+                               "de": "PyMuPDF nicht installiert.\nFür die Vorschau: pip install PyMuPDF",
+                               "en": "PyMuPDF not installed.\nFor preview: pip install PyMuPDF"},
+    "APPS_PDF_LOAD_ERR":      {"tr": "PDF yüklenemedi:",               "de": "PDF konnte nicht geladen werden:",   "en": "PDF could not be loaded:"},
+    "APPS_PDF_OPEN_BTN":      {"tr": "📂  PDF'i Aç",                  "de": "📂  PDF öffnen",                     "en": "📂  Open PDF"},
+    "APPS_COL_PDF":           {"tr": "PDF",                            "de": "PDF",                                "en": "PDF"},
     "APPS_CONFIRM_TITLE":     {"tr": "Onayla",                         "de": "Bestätigen",                          "en": "Confirm"},
     "APPS_CONFIRM_MSG":       {"tr": "Tüm başvuru kayıtları silinecek.\nDevam etmek istiyor musunuz?",
                                "de": "Alle Bewerbungsdaten werden gelöscht.\nMöchtest du fortfahren?",
                                "en": "All application records will be deleted.\nDo you want to continue?"},
     "APPS_CLEARED_TITLE":     {"tr": "Temizlendi",                     "de": "Geleert",                             "en": "Cleared"},
     "APPS_CLEARED_MSG":       {"tr": "kayıt silindi.",                 "de": "Einträge gelöscht.",                  "en": "records deleted."},
+
+    # ── Telegram ────────────────────────────────────────────────────────────
+    "SETTINGS_TELEGRAM":      {"tr": "Telegram Bot Bildirimleri",       "de": "Telegram-Bot-Benachrichtigungen",     "en": "Telegram Bot Notifications"},
+    "SETTINGS_TG_ENABLE":     {"tr": "Telegram bildirimlerini etkinleştir (başvurulan her pozisyon için mesaj gönderir)",
+                               "de": "Telegram-Benachrichtigungen aktivieren (Nachricht bei jeder Bewerbung)",
+                               "en": "Enable Telegram notifications (sends a message for every applied position)"},
+    "SETTINGS_TG_TOKEN":      {"tr": "Bot API Token:",                  "de": "Bot-API-Token:",                      "en": "Bot API Token:"},
+    "SETTINGS_TG_CHAT_ID":    {"tr": "Chat ID:",                        "de": "Chat-ID:",                            "en": "Chat ID:"},
+    "SETTINGS_TG_SHOW":       {"tr": "Token'i göster",                  "de": "Token anzeigen",                      "en": "Show token"},
+    "SETTINGS_TG_TEST":       {"tr": "📨  Test Mesajı Gönder",          "de": "📨  Testnachricht senden",            "en": "📨  Send Test Message"},
+    "SETTINGS_TG_TESTING":    {"tr": "Gönderiliyor...",                 "de": "Wird gesendet...",                    "en": "Sending..."},
+    "SETTINGS_TG_OK":         {"tr": "✓ Mesaj gönderildi!",             "de": "✓ Nachricht gesendet!",               "en": "✓ Message sent!"},
+    "SETTINGS_TG_ERR":        {"tr": "Hata:",                           "de": "Fehler:",                             "en": "Error:"},
+    "SETTINGS_TG_HOW_TITLE":  {"tr": "📱  Nasıl kurulur?",              "de": "📱  Einrichtungsanleitung",           "en": "📱  Setup Guide"},
+    "SETTINGS_TG_HOW_BODY":   {
+        "tr": (
+            "① BOT TOKEN almak için:\n"
+            "   • Telegram'da @BotFather'ı aç ve /newbot yaz\n"
+            "   • Bot adı + kullanıcı adı gir\n"
+            "   • Verilen token'i yukarıdaki alana yapıştır\n\n"
+            "② CHAT ID almak için:\n"
+            "   • Oluşturduğun bota bir mesaj gönder\n"
+            "   • Telegram'da @userinfobot'a /start yaz\n"
+            "   • Gelen 'Id:' değerini Chat ID alanına gir\n\n"
+            "③ 'Test Mesajı Gönder' ile bağlantıyı doğrula"
+        ),
+        "de": (
+            "① BOT TOKEN holen:\n"
+            "   • Öffne @BotFather in Telegram und schreibe /newbot\n"
+            "   • Bot-Name + Benutzername eingeben\n"
+            "   • Den erhaltenen Token oben einfügen\n\n"
+            "② CHAT ID holen:\n"
+            "   • Sende deinem Bot eine Nachricht\n"
+            "   • Schreibe @userinfobot /start in Telegram\n"
+            "   • Den 'Id:'-Wert als Chat-ID eintragen\n\n"
+            "③ Mit 'Testnachricht senden' die Verbindung prüfen"
+        ),
+        "en": (
+            "① Get a BOT TOKEN:\n"
+            "   • Open @BotFather in Telegram and send /newbot\n"
+            "   • Enter a bot name + username\n"
+            "   • Paste the token you receive into the field above\n\n"
+            "② Get your CHAT ID:\n"
+            "   • Send your new bot any message\n"
+            "   • Open @userinfobot in Telegram and send /start\n"
+            "   • Copy the 'Id:' value into the Chat ID field\n\n"
+            "③ Click 'Send Test Message' to verify the connection"
+        ),
+    },
 
     # ── Kontaktlar sekmesi ───────────────────────────────────────────────────
     "CON_HEADER":             {"tr": "📬  Kontakt Kişiler & Toplu Mail","de": "📬  Kontaktpersonen & Massen-E-Mail", "en": "📬  Contact Persons & Bulk Mail"},
