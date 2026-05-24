@@ -58,11 +58,41 @@ def apply_to_job(
 
     _log(f"  → {title} @ {company}")
 
+    def _finish_submission(submitted: bool):
+        _log("    Başvuru doğrulanıyor...")
+        try:
+            page.goto(url, wait_until="domcontentloaded")
+            _wait(page, 2500, stop_event)
+            if _is_already_applied(page):
+                _log("    ✓ Başvuru onaylandı (Bereits beworben görünüyor).")
+                return "applied", "", pdf_path
+        except Exception:
+            pass
+
+        if submitted:
+            _log("    Başvuru gönderildi!")
+            return "applied", "", pdf_path
+
+        return "error", "Bewerbung abschicken başarısız", pdf_path
+
+    def _submit_if_ready():
+        if not _is_on_review_page(page):
+            return None
+        _log("    Bewerbung abschicken hazır — Überprüfen olmadan direkt onaylanıyor.")
+        submitted = _confirm_submit(page, _log, stop_event)
+        if _stopped():
+            return "skipped", "", pdf_path
+        return _finish_submission(submitted)
+
     try:
         page.goto(url, wait_until="domcontentloaded")
         _wait(page, 2500, stop_event)
         if _stopped():
             return "skipped", "", pdf_path
+
+        ready_result = _submit_if_ready()
+        if ready_result:
+            return ready_result
 
         # İlan açıklamasını ve kontakt kişiyi forma girmeden önce al
         job_description = _get_job_description(page)
@@ -96,6 +126,10 @@ def apply_to_job(
         _wait(page, 3000, stop_event)
         if _stopped():
             return "skipped", "", pdf_path
+
+        ready_result = _submit_if_ready()
+        if ready_result:
+            return ready_result
 
         # Form başladı mı?
         if not _is_on_form(page):
@@ -191,22 +225,7 @@ def apply_to_job(
         # ── Onay ──────────────────────────────────────────────────
         submitted = _confirm_submit(page, _log, stop_event)
 
-        # ── Doğrulama: ilan sayfasına dön, "Bereits beworben" var mı? ──
-        _log("    Başvuru doğrulanıyor...")
-        try:
-            page.goto(url, wait_until="domcontentloaded")
-            _wait(page, 2500, stop_event)
-            if _is_already_applied(page):
-                _log("    ✓ Başvuru onaylandı (Bereits beworben görünüyor).")
-                return "applied", "", pdf_path
-        except Exception:
-            pass
-
-        if submitted:
-            _log("    Başvuru gönderildi!")
-            return "applied", "", pdf_path
-
-        return "error", "Bewerbung abschicken başarısız", pdf_path
+        return _finish_submission(submitted)
 
     except Exception as e:
         if _stopped():
