@@ -1,0 +1,64 @@
+# ── Kullanıcı verisi (ilk çalıştırmada otomatik oluşturulur) ─────────────────
+config.json
+applications.db
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+.installed.cfg
+lib/
+lib64/
+
+# ── Sanal ortamlar ────────────────────────────────────────────────────────────
+venv/
+env/
+.venv/
+.env/
+ENV/
+
+# ── PyInstaller çıktıları ─────────────────────────────────────────────────────
+dist/
+build/
+*.spec.bak
+
+# ── Build logları ─────────────────────────────────────────────────────────────
+build_stdout.txt
+build_stderr.txt
+
+# ── IDE / editör ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+*.user
+.project
+.pydevproject
+
+# ── İşletim sistemi ──────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── Geçici dosyalar ───────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.log
+*.bak
+
+# ── PDF geçici Anschreiben (bot tarafından üretilip silinen) ──────────────────
+anschreiben_*.pdf
