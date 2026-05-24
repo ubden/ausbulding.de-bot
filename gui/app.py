@@ -82,7 +82,7 @@ class App(ctk.CTk):
         ).pack(side="left")
 
         # ── Sekmeler ──────────────────────────────────────────────
-        self._tabs = ctk.CTkTabview(self, anchor="nw")
+        self._tabs = ctk.CTkTabview(self, anchor="nw", command=self._on_tab_change)
         self._tabs.grid(row=1, column=0, padx=10, pady=(8, 0), sticky="nsew")
 
         for key in ("TAB_LOGIN", "TAB_SETTINGS", "TAB_BOT", "TAB_APPLICATIONS", "TAB_CONTACTS"):
@@ -153,6 +153,22 @@ class App(ctk.CTk):
         donate_lbl.pack(side="left")
         donate_lbl.bind("<Button-1>", lambda _e: webbrowser.open("https://ubd.one/donate"))
 
+    def _on_tab_change(self):
+        try:
+            current = self._tabs.get()
+        except Exception:
+            return
+        if current == t("TAB_APPLICATIONS") and hasattr(self, "_apps_tab"):
+            self._apps_tab.refresh_if_dirty()
+        elif current == t("TAB_CONTACTS") and hasattr(self, "_contacts_tab"):
+            self._contacts_tab.refresh_if_dirty()
+
+    def _is_active_tab(self, key: str) -> bool:
+        try:
+            return self._tabs.get() == t(key)
+        except Exception:
+            return False
+
     # ── Dil değiştirme ─────────────────────────────────────────────
 
     def _on_lang_change(self, display_val: str):
@@ -210,13 +226,15 @@ class App(ctk.CTk):
             job_callback=self._on_job_done,
         )
 
+        self._runner.start()
+
         import threading
         def _watch():
-            self._runner._thread.join()
+            thread = self._runner._thread if self._runner else None
+            if thread:
+                thread.join()
             self._bot_tab.push_stopped()
         threading.Thread(target=_watch, daemon=True).start()
-
-        self._runner.start()
 
     def _stop_bot(self):
         if self._runner:
@@ -236,8 +254,12 @@ class App(ctk.CTk):
             f"{t('RUNNER_APPLIED')} {self._applied_count}  |  "
             f"{t('RUNNER_SKIPPED')} {self._scanned_count}"
         )
-        self._apps_tab.add_job(job)
-        try:
-            self._contacts_tab.after(0, self._contacts_tab._load)
-        except Exception:
-            pass
+        if self._is_active_tab("TAB_APPLICATIONS"):
+            self._apps_tab.schedule_refresh()
+        else:
+            self._apps_tab.mark_dirty()
+
+        if self._is_active_tab("TAB_CONTACTS"):
+            self._contacts_tab.schedule_refresh()
+        else:
+            self._contacts_tab.mark_dirty()

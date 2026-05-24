@@ -34,6 +34,7 @@
 | 🔍 **Intelligente Filter** | Filtern nach Stadt, Umkreis, Branche, Ausbildungsart und Stichwort |
 | 📬 **Kontaktverwaltung** | Extrahiert automatisch Ansprechpersonen aus den Stellenanzeigen |
 | 📧 **Massen-E-Mail** | Sendet Vorlagen-E-Mails an gesammelte Kontakte (5-Sekunden-Pause) |
+| 📱 **Telegram-Benachrichtigungen** | Sendet eine formatierte Telegram-Nachricht für jede erfolgreiche Bewerbung |
 | 📊 **Bewerbungsübersicht** | Listet alle Bewerbungen nach Status, Unternehmen und Datum auf |
 | 🔒 **Lokale Speicherung** | Alle Daten werden in SQLite gespeichert — nichts geht in die Cloud |
 | 🌐 **3-sprachige Oberfläche** | Zwischen Türkisch, Deutsch und Englisch jederzeit umschalten |
@@ -54,7 +55,7 @@
 **Bot-Tab — Start, Stichwortfilter, Live-Log**
 > *(Hier `screenshots/bot.png` einfügen)*
 
-**Einstellungen-Tab — OpenAI, SMTP, Filter**
+**Einstellungen-Tab — OpenAI, SMTP, Telegram, Filter**
 > *(Hier `screenshots/settings.png` einfügen)*
 
 **Bewerbungen-Tab — Tabelle und Statistiken**
@@ -125,6 +126,7 @@ Die Anwendung erstellt beim ersten Start automatisch eine `config.json`. Alle Ei
 | Branche | 25 Branchenoptionen |
 | Persönliche Daten | Vorname, Nachname, Adresse (für PDF) |
 | SMTP-Einstellungen | SMTP-Serverdaten für den E-Mail-Versand |
+| Telegram-Benachrichtigungen | Bot-Token + Chat-ID für Bewerbungsbenachrichtigungen |
 
 ### Bot-Tab — Stichwortfilter
 
@@ -161,7 +163,7 @@ Bot starten
             │    └─ Schritt 5: Dateien (aus Profil)
             ├─ Überprüfen → Bewerbung abschicken
             ├─ Verifizierung: zur Stellenanzeige zurücknavigieren
-            └─ In DB speichern → GUI benachrichtigen
+            └─ In DB speichern → GUI + Telegram benachrichtigen (wenn aktiviert)
   └─ Fertig: Beworben / Übersprungen / Fehlerbericht
 ```
 
@@ -180,6 +182,18 @@ E-Mail:       beispiel@gmail.com
 Passwort:     xxxx xxxx xxxx xxxx  (App-Passwort)
 STARTTLS:     ✅ aktiviert
 ```
+
+---
+
+## 📱 Telegram-Benachrichtigungen
+
+Telegram-Benachrichtigungen sind optional und können im Einstellungen-Tab aktiviert werden. Wenn aktiviert, sendet der Bot nach jeder erfolgreichen `applied` Bewerbung eine formatierte Telegram-Nachricht.
+
+1. Öffne Telegram und erstelle mit [@BotFather](https://t.me/BotFather) über `/newbot` einen Bot
+2. Kopiere den API-Token in das Feld **Bot API Token**
+3. Sende deinem neuen Bot eine beliebige Nachricht
+4. Öffne [@userinfobot](https://t.me/userinfobot), sende `/start` und kopiere den `Id`-Wert in **Chat ID**
+5. Prüfe die Verbindung im Einstellungen-Tab mit **Testnachricht senden**
 
 ---
 
@@ -206,7 +220,7 @@ ausbildungbot/
 ├── gui/                       # Benutzeroberfläche (customtkinter)
 │   ├── app.py                 # Hauptfenster + Tab-Verwaltung
 │   ├── login_tab.py           # Anmeldung + Wichtiger Hinweis
-│   ├── settings_tab.py        # Einstellungen (OpenAI, Filter, SMTP)
+│   ├── settings_tab.py        # Einstellungen (OpenAI, Filter, SMTP, Telegram)
 │   ├── bot_tab.py             # Bot-Steuerung + Stichwortfilter + Log
 │   ├── applications_tab.py    # Bewerbungstabelle + Statistiken
 │   └── contacts_tab.py        # Kontakte + Massen-E-Mail
@@ -222,7 +236,8 @@ ausbildungbot/
 │   ├── database.py            # SQLite CRUD (applications + contacts)
 │   ├── openai_service.py      # GPT-4o-mini Anschreiben-Generator
 │   ├── pdf_service.py         # ReportLab PDF-Generator
-│   └── smtp_service.py        # SMTP E-Mail-Versand
+│   ├── smtp_service.py        # SMTP E-Mail-Versand
+│   └── telegram_service.py    # Telegram Bot API Benachrichtigungen
 │
 └── utils/
     ├── config.py              # config.json lesen/schreiben

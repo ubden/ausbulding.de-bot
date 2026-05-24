@@ -53,6 +53,8 @@ def _status_short() -> dict:
 class ApplicationsTab(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
+        self._refresh_after_id = None
+        self._dirty = True
         self._build()
         self.refresh()
 
@@ -141,6 +143,14 @@ class ApplicationsTab(ctk.CTkFrame):
     # ── Data ──────────────────────────────────────────────────────────
 
     def refresh(self):
+        if self._refresh_after_id is not None:
+            try:
+                self.after_cancel(self._refresh_after_id)
+            except Exception:
+                pass
+            self._refresh_after_id = None
+        self._dirty = False
+
         stats = get_stats()
         for key, lbl in self._stat_labels.items():
             lbl.configure(text=f"{t(_STAT_KEYS[key])}\n{stats.get(key, 0)}")
@@ -237,8 +247,24 @@ class ApplicationsTab(ctk.CTkFrame):
             err_lbl.grid(row=1, column=1, columnspan=6, padx=(6, 6), pady=(0, 4), sticky="w")
             err_lbl.bind("<Button-1>", _open)
 
+    def schedule_refresh(self, delay_ms: int = 700):
+        self._dirty = True
+        if self._refresh_after_id is not None:
+            try:
+                self.after_cancel(self._refresh_after_id)
+            except Exception:
+                pass
+        self._refresh_after_id = self.after(delay_ms, self.refresh)
+
+    def mark_dirty(self):
+        self._dirty = True
+
+    def refresh_if_dirty(self):
+        if self._dirty:
+            self.refresh()
+
     def add_job(self, job: dict):
-        self.after(0, self.refresh)
+        self.schedule_refresh()
 
     def _clear_db(self):
         import tkinter.messagebox as mb

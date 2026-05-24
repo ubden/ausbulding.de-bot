@@ -34,6 +34,7 @@
 | 🔍 **Smart Filtering** | Filter by city, radius, sector, training type and keyword |
 | 📬 **Contact Management** | Automatically extracts contact persons from listing pages |
 | 📧 **Bulk Mail** | Sends templated e-mails to collected contacts (5 s interval) |
+| 📱 **Telegram Notifications** | Sends a formatted Telegram message for every successful application |
 | 📊 **Application Report** | Lists all applications by status, company and date |
 | 🔒 **Local Storage** | All data stored in SQLite — nothing is sent to the cloud |
 | 🌐 **3-Language UI** | Switch between Turkish, German and English without restarting manually |
@@ -54,7 +55,7 @@
 **Bot Tab — Start, keyword filter, live log**
 > *(Add `screenshots/bot.png` here)*
 
-**Settings Tab — OpenAI, SMTP, filters**
+**Settings Tab — OpenAI, SMTP, Telegram, filters**
 > *(Add `screenshots/settings.png` here)*
 
 **Applications Tab — Table and statistics**
@@ -125,6 +126,7 @@ The app creates `config.json` automatically on first launch. All settings are ma
 | Sector | 25 sector options |
 | Personal Info | Vorname, Nachname, address (for PDF) |
 | SMTP Settings | SMTP server info for sending e-mail |
+| Telegram Notifications | Bot token + Chat ID for application notifications |
 
 ### Bot Tab — Keyword Filter
 
@@ -161,7 +163,7 @@ Start Bot
             │    └─ Step 5: Files (from profile)
             ├─ Überprüfen → Bewerbung abschicken
             ├─ Verification: navigate back to listing page
-            └─ Save to DB → notify GUI
+            └─ Save to DB → notify GUI + Telegram (if enabled)
   └─ Done: Applied / Skipped / Error report
 ```
 
@@ -180,6 +182,18 @@ Email:        example@gmail.com
 Password:     xxxx xxxx xxxx xxxx  (app password)
 STARTTLS:     ✅ enabled
 ```
+
+---
+
+## 📱 Telegram Notifications
+
+Telegram notifications are optional and can be enabled from the Settings tab. When enabled, the bot sends one formatted message after each successful `applied` application.
+
+1. Open Telegram and create a bot with [@BotFather](https://t.me/BotFather) using `/newbot`
+2. Copy the API token into the **Bot API Token** field
+3. Send any message to your new bot
+4. Open [@userinfobot](https://t.me/userinfobot), send `/start`, and copy the `Id` value into **Chat ID**
+5. Click **Send Test Message** in Settings to verify the connection
 
 ---
 
@@ -206,7 +220,7 @@ ausbildungbot/
 ├── gui/                       # UI (customtkinter)
 │   ├── app.py                 # Main window + tab manager
 │   ├── login_tab.py           # Login + important note
-│   ├── settings_tab.py        # Settings (OpenAI, filters, SMTP)
+│   ├── settings_tab.py        # Settings (OpenAI, filters, SMTP, Telegram)
 │   ├── bot_tab.py             # Bot control + keyword filter + log
 │   ├── applications_tab.py    # Application table + statistics
 │   └── contacts_tab.py        # Contacts + bulk mail
@@ -222,7 +236,8 @@ ausbildungbot/
 │   ├── database.py            # SQLite CRUD (applications + contacts)
 │   ├── openai_service.py      # GPT-4o-mini Anschreiben generator
 │   ├── pdf_service.py         # ReportLab PDF generator
-│   └── smtp_service.py        # SMTP mail sender
+│   ├── smtp_service.py        # SMTP mail sender
+│   └── telegram_service.py    # Telegram Bot API notifications
 │
 └── utils/
     ├── config.py              # config.json read/write

@@ -34,6 +34,7 @@
 | 🔍 **Akıllı Filtreleme** | Şehir, yarıçap, sektör, eğitim türü ve kelime bazlı filtreleme |
 | 📬 **Kontakt Yönetimi** | İlan sayfalarından irtibat kişilerini otomatik toplar |
 | 📧 **Toplu Mail** | Toplanan kontaktlara şablonlu mail gönderir (5 saniyelik aralıkla) |
+| 📱 **Telegram Bildirimleri** | Başarılı her başvuru için formatlı Telegram mesajı gönderir |
 | 📊 **Başvuru Raporu** | Tüm başvuruları durum, şirket ve tarih bazlı listeler |
 | 🔒 **Yerel Depolama** | Tüm veriler SQLite'a kaydedilir — hiçbir şey buluta gönderilmez |
 | 🌐 **3 Dil Desteği** | Türkçe, Almanca ve İngilizce arayüz; istediğin zaman değiştir |
@@ -54,7 +55,7 @@
 **Bot Sekmesi — Başlatma, kelime filtresi, canlı log**
 > *(Buraya `screenshots/bot.png` ekleyin)*
 
-**Ayarlar Sekmesi — OpenAI, SMTP, filtreler**
+**Ayarlar Sekmesi — OpenAI, SMTP, Telegram, filtreler**
 > *(Buraya `screenshots/settings.png` ekleyin)*
 
 **Başvurular Sekmesi — Tablo ve istatistikler**
@@ -125,6 +126,7 @@ Uygulama ilk çalıştırmada `config.json` dosyasını otomatik oluşturur. Tü
 | Branche | 25 sektör seçeneği |
 | Kişisel Bilgiler | Vorname, Nachname, Adres (PDF için) |
 | SMTP Ayarları | Mail göndermek için SMTP sunucu bilgileri |
+| Telegram Bildirimleri | Başvuru bildirimleri için bot token + Chat ID |
 
 ### Bot Sekmesi — Kelime Filtresi
 
@@ -161,7 +163,7 @@ Bot Başlat
             │    └─ Adım 5: Dosyalar (profilden)
             ├─ Überprüfen → Bewerbung abschicken
             ├─ Doğrulama: ilan sayfasına geri dön
-            └─ DB'ye kaydet → GUI'ye bildir
+            └─ DB'ye kaydet → GUI + Telegram bildirimi (açıksa)
   └─ Tamamlandı: Başvurulan / Atlanan / Hata raporu
 ```
 
@@ -180,6 +182,18 @@ E-posta:      ornek@gmail.com
 Şifre:        xxxx xxxx xxxx xxxx  (uygulama şifresi)
 STARTTLS:     ✅ açık
 ```
+
+---
+
+## 📱 Telegram Bildirimleri
+
+Telegram bildirimleri isteğe bağlıdır ve Ayarlar sekmesinden açılır. Açıldığında bot, başarıyla tamamlanan her `applied` başvurudan sonra formatlı bir Telegram mesajı gönderir.
+
+1. Telegram'da [@BotFather](https://t.me/BotFather) hesabını açın ve `/newbot` ile bot oluşturun
+2. Verilen API token değerini **Bot API Token** alanına yapıştırın
+3. Oluşturduğunuz bota herhangi bir mesaj gönderin
+4. [@userinfobot](https://t.me/userinfobot) hesabına `/start` yazın ve gelen `Id` değerini **Chat ID** alanına girin
+5. Ayarlar sekmesindeki **Test Mesajı Gönder** butonuyla bağlantıyı doğrulayın
 
 ---
 
@@ -206,7 +220,7 @@ ausbildungbot/
 ├── gui/                       # Kullanıcı arayüzü (customtkinter)
 │   ├── app.py                 # Ana pencere + sekme yöneticisi
 │   ├── login_tab.py           # Giriş + önemli not
-│   ├── settings_tab.py        # Ayarlar (OpenAI, filtreler, SMTP)
+│   ├── settings_tab.py        # Ayarlar (OpenAI, filtreler, SMTP, Telegram)
 │   ├── bot_tab.py             # Bot kontrolü + kelime filtresi + log
 │   ├── applications_tab.py    # Başvuru tablosu + istatistikler
 │   └── contacts_tab.py        # Kontaktlar + toplu mail
@@ -222,7 +236,8 @@ ausbildungbot/
 │   ├── database.py            # SQLite CRUD (applications + contacts)
 │   ├── openai_service.py      # GPT-4o-mini Anschreiben üretimi
 │   ├── pdf_service.py         # ReportLab PDF üretimi
-│   └── smtp_service.py        # SMTP mail gönderme
+│   ├── smtp_service.py        # SMTP mail gönderme
+│   └── telegram_service.py    # Telegram Bot API bildirimleri
 │
 └── utils/
     ├── config.py              # config.json okuma/yazma

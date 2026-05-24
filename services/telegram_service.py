@@ -7,6 +7,7 @@ import json
 import urllib.request
 import urllib.error
 from datetime import datetime
+from html import escape
 
 
 _BASE = "https://api.telegram.org/bot{token}/{method}"
@@ -102,16 +103,20 @@ def build_application_message(
         },
     }
     lb = labels.get(lang, labels["tr"])
+    safe_title    = escape(title or "-")
+    safe_company  = escape(company or "-")
+    safe_location = escape(location or "-")
+    safe_url      = escape(url or "", quote=True)
 
     lines = [
         f"<b>{lb['header']}</b>",
         "",
-        f"{lb['position']} {title}",
-        f"{lb['company']} {company}",
-        f"{lb['location']} {location}",
+        f"{lb['position']} {safe_title}",
+        f"{lb['company']} {safe_company}",
+        f"{lb['location']} {safe_location}",
     ]
-    if url:
-        lines.append(f"\n{lb['link']}: {url}")
+    if safe_url:
+        lines.append(f'\n<a href="{safe_url}">{lb["link"]}</a>')
     lines += ["", f"📅 {now}", lb["footer"]]
 
     return "\n".join(lines)

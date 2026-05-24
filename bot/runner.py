@@ -4,6 +4,7 @@ from bot.login import login
 from bot.scraper import scrape_jobs
 from bot.applicator import apply_to_job
 from services.database import upsert_application, job_exists
+from services.telegram_service import build_application_message, send_message
 from utils.i18n import t
 
 
@@ -16,6 +17,7 @@ class BotRunner:
         self._stop_event = threading.Event()
         self._thread: threading.Thread = None
         self._browser = BrowserManager()
+        self._telegram_warning_logged = False
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -117,6 +119,7 @@ class BotRunner:
 
                 if status == "applied":
                     applied += 1
+                    self._send_telegram_notification(job)
                 elif status in ("skipped", "already_applied"):
                     skipped += 1
                 else:
@@ -146,3 +149,34 @@ class BotRunner:
                 full = f"{t('RUNNER_DONE')} — {summary_detail}"
                 self.log(full)
                 self.set_status(full)
+
+    def _send_telegram_notification(self, job: dict) -> None:
+        tg_cfg = self.config.get("telegram") or {}
+        if not tg_cfg.get("enabled"):
+            return
+
+        token = (tg_cfg.get("token") or "").strip()
+        chat_id = (tg_cfg.get("chat_id") or "").strip()
+        if not token or not chat_id:
+            if not self._telegram_warning_logged:
+                self.log("Telegram: token veya Chat ID eksik, bildirim atlandı.")
+                self._telegram_warning_logged = True
+            return
+
+        msg = build_application_message(
+            title=job.get("title", ""),
+            company=job.get("company", ""),
+            location=job.get("location", ""),
+            url=job.get("url", ""),
+            lang=self.config.get("lang", "tr"),
+        )
+
+        def _send():
+            ok, err = send_message(token, chat_id, msg)
+            title = (job.get("title") or "")[:60]
+            if ok:
+                self.log(f"Telegram: bildirim gönderildi — {title}")
+            else:
+                self.log(f"Telegram: bildirim gönderilemedi — {err[:100]}")
+
+        threading.Thread(target=_send, daemon=True).start()

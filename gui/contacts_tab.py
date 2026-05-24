@@ -38,8 +38,10 @@ class ContactsTab(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
         self._contacts: list[dict] = []
+        self._refresh_after_id = None
+        self._dirty = True
         self._build()
-        self._load()
+        self.refresh()
 
     # ── Layout ────────────────────────────────────────────────────────
 
@@ -72,7 +74,7 @@ class ContactsTab(ctk.CTkFrame):
         ctk.CTkButton(
             btn_row, text=t("CON_REFRESH"), width=110, height=34,
             fg_color=("gray60", "gray38"), hover_color=("gray45", "gray26"),
-            command=self._load,
+            command=self.refresh,
         ).pack(side="left", padx=(0, 8))
 
         ctk.CTkButton(
@@ -139,7 +141,15 @@ class ContactsTab(ctk.CTkFrame):
         )
         self._scroll.grid(row=3, column=0, padx=16, pady=(0, 14), sticky="nsew")
 
-    def _load(self):
+    def refresh(self):
+        if self._refresh_after_id is not None:
+            try:
+                self.after_cancel(self._refresh_after_id)
+            except Exception:
+                pass
+            self._refresh_after_id = None
+        self._dirty = False
+
         for child in self._scroll.winfo_children():
             child.destroy()
 
@@ -151,6 +161,25 @@ class ContactsTab(ctk.CTkFrame):
         self._progress_label.configure(
             text=t("CON_PROGRESS", n=len(self._contacts), s=sent)
         )
+
+    def schedule_refresh(self, delay_ms: int = 900):
+        self._dirty = True
+        if self._refresh_after_id is not None:
+            try:
+                self.after_cancel(self._refresh_after_id)
+            except Exception:
+                pass
+        self._refresh_after_id = self.after(delay_ms, self.refresh)
+
+    def mark_dirty(self):
+        self._dirty = True
+
+    def refresh_if_dirty(self):
+        if self._dirty:
+            self.refresh()
+
+    def _load(self):
+        self.refresh()
 
     def _add_row(self, i: int, c: dict):
         cols = _columns()
@@ -305,7 +334,7 @@ class ContactsTab(ctk.CTkFrame):
                     )
                     time.sleep(1)
 
-        self.after(0, self._load)
+        self.after(0, self.refresh)
         self._set_progress(t("CON_DONE", n=total), color="#2ecc71")
 
     def _set_progress(self, text: str, color: str = "#caa8f0"):

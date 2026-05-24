@@ -3,6 +3,19 @@ import customtkinter as ctk
 from datetime import datetime
 from utils.i18n import t
 
+_MAX_QUEUE_ITEMS = 250
+_MAX_LOG_LINES = 1200
+
+_LOG_TAG_COLORS = {
+    "log_time":     "#7f8c8d",
+    "log_default":  "#d9d9e3",
+    "log_progress": "#64b5f6",
+    "log_success":  "#2ecc71",
+    "log_warning":  "#f5b041",
+    "log_error":    "#ff6b6b",
+    "log_telegram": "#4dd0e1",
+}
+
 
 class BotTab(ctk.CTkFrame):
     def __init__(self, master, on_start, on_stop, **kwargs):
@@ -122,6 +135,7 @@ class BotTab(ctk.CTkFrame):
             corner_radius=10, border_width=1, border_color=("gray78", "gray32"),
         )
         self._log_box.grid(row=3, column=0, padx=16, pady=(0, 14), sticky="nsew")
+        self._configure_log_tags()
 
     # ── Eylemler ──────────────────────────────────────────────────
 
@@ -148,28 +162,89 @@ class BotTab(ctk.CTkFrame):
     # ── Kuyruk ────────────────────────────────────────────────────
 
     def _poll_queue(self):
-        try:
-            while True:
-                item = self._log_queue.get_nowait()
-                tp = item["type"]
-                if tp == "log":
-                    self._append_log(item["text"])
-                elif tp == "status":
-                    self._set_status(item["text"])
-                elif tp == "stopped":
-                    self._on_bot_stopped()
-                elif tp == "counter":
-                    self._counter_label.configure(text=item["text"])
-        except queue.Empty:
-            pass
-        self.after(150, self._poll_queue)
+        logs = []
+        status_text = None
+        counter_text = None
+        stopped = False
 
-    def _append_log(self, text: str):
-        ts = datetime.now().strftime("%H:%M:%S")
+        for _ in range(_MAX_QUEUE_ITEMS):
+            try:
+                item = self._log_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            tp = item["type"]
+            if tp == "log":
+                logs.append(item["text"])
+            elif tp == "status":
+                status_text = item["text"]
+            elif tp == "stopped":
+                stopped = True
+            elif tp == "counter":
+                counter_text = item["text"]
+
+        if logs:
+            self._append_logs(logs)
+        if status_text is not None:
+            self._set_status(status_text)
+        if counter_text is not None:
+            self._counter_label.configure(text=counter_text)
+        if stopped:
+            self._on_bot_stopped()
+
+        self.after(25 if not self._log_queue.empty() else 90, self._poll_queue)
+
+    def _text_widget(self):
+        return getattr(self._log_box, "_textbox", self._log_box)
+
+    def _configure_log_tags(self):
+        widget = self._text_widget()
+        for tag, color in _LOG_TAG_COLORS.items():
+            try:
+                widget.tag_configure(tag, foreground=color)
+            except Exception:
+                pass
+
+    def _classify_log(self, text: str) -> str:
+        s = text.lower()
+        if "telegram" in s:
+            return "log_telegram"
+        if any(x in s for x in ("hata", "error", "fehler", "başarısız", "failed", "exception")):
+            return "log_error"
+        if any(x in s for x in ("atlandı", "zaten", "bulunamadı", "uyarı", "gerekli", "skipped", "warning")):
+            return "log_warning"
+        if any(x in s for x in ("✓", "✅", "başvuru gönderildi", "onaylandı", "tamamlandı", "başarılı", "kaydedildi", "done")):
+            return "log_success"
+        if any(x in s for x in ("başvuruluyor", "aranıyor", "yükleniyor", "taranıyor", "adım", "tıklandı", "scanning", "applying")):
+            return "log_progress"
+        return "log_default"
+
+    def _append_logs(self, texts: list[str]):
+        widget = self._text_widget()
         self._log_box.configure(state="normal")
-        self._log_box.insert("end", f"[{ts}] {text}\n")
+        for text in texts:
+            ts = datetime.now().strftime("%H:%M:%S")
+            tag = self._classify_log(text)
+            try:
+                widget.insert("end", f"[{ts}] ", ("log_time",))
+                widget.insert("end", f"{text}\n", (tag,))
+            except Exception:
+                self._log_box.insert("end", f"[{ts}] {text}\n")
+        self._trim_log(widget)
         self._log_box.see("end")
         self._log_box.configure(state="disabled")
+
+    def _trim_log(self, widget):
+        try:
+            line_count = int(widget.index("end-1c").split(".")[0])
+            if line_count > _MAX_LOG_LINES:
+                delete_to = line_count - _MAX_LOG_LINES + 1
+                widget.delete("1.0", f"{delete_to}.0")
+        except Exception:
+            pass
+
+    def _append_log(self, text: str):
+        self._append_logs([text])
 
     def _on_bot_stopped(self):
         self._running = False

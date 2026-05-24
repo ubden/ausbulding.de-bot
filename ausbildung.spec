@@ -33,7 +33,7 @@ all_hidden   = ctk_hidden + pw_hidden + rl_hidden + pil_hidden + [
     # Proje modülleri
     "utils", "utils.config",
     "services", "services.database", "services.openai_service",
-    "services.pdf_service", "services.smtp_service",
+    "services.pdf_service", "services.smtp_service", "services.telegram_service",
     "bot", "bot.browser", "bot.login", "bot.scraper", "bot.applicator", "bot.runner",
     "gui", "gui.app", "gui.login_tab", "gui.settings_tab",
     "gui.bot_tab", "gui.applications_tab", "gui.contacts_tab",

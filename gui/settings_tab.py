@@ -199,6 +199,52 @@ class SettingsTab(ctk.CTkFrame):
         self._smtp_status = ctk.CTkLabel(smtp_btn_frame, text="", text_color="gray")
         self._smtp_status.pack(side="left")
 
+        # ── Telegram ──────────────────────────────────────────────
+        _section("SETTINGS_TELEGRAM", "📱")
+
+        telegram = self._cfg.get("telegram", {})
+
+        self._tg_enabled_var = ctk.BooleanVar(value=telegram.get("enabled", False))
+        ctk.CTkCheckBox(f, text=t("SETTINGS_TG_ENABLE"), variable=self._tg_enabled_var).grid(
+            row=row, column=0, columnspan=2, padx=20, pady=(6, 2), sticky="w"); row += 1
+
+        ctk.CTkLabel(f, text=t("SETTINGS_TG_TOKEN")).grid(row=row, column=0, padx=20, pady=6, sticky="e")
+        self._tg_token_var = ctk.StringVar(value=telegram.get("token", ""))
+        self._tg_token_entry = ctk.CTkEntry(
+            f, textvariable=self._tg_token_var, width=380, show="*", placeholder_text="1234567890:AA..."
+        )
+        self._tg_token_entry.grid(row=row, column=1, padx=(0, 20), pady=6, sticky="w"); row += 1
+
+        ctk.CTkLabel(f, text=t("SETTINGS_TG_CHAT_ID")).grid(row=row, column=0, padx=20, pady=6, sticky="e")
+        self._tg_chat_id_var = ctk.StringVar(value=telegram.get("chat_id", ""))
+        ctk.CTkEntry(f, textvariable=self._tg_chat_id_var, width=220, placeholder_text="123456789").grid(
+            row=row, column=1, padx=(0, 20), pady=6, sticky="w"); row += 1
+
+        ctk.CTkCheckBox(f, text=t("SETTINGS_TG_SHOW"), command=self._toggle_tg_token).grid(
+            row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w"); row += 1
+
+        tg_btn_frame = ctk.CTkFrame(f, fg_color="transparent")
+        tg_btn_frame.grid(row=row, column=0, columnspan=2, padx=20, pady=(6, 2), sticky="w"); row += 1
+        ctk.CTkButton(tg_btn_frame, text=t("SETTINGS_TG_TEST"), width=180, command=self._test_telegram).pack(side="left", padx=(0, 12))
+        self._tg_status = ctk.CTkLabel(tg_btn_frame, text="", text_color="gray")
+        self._tg_status.pack(side="left")
+
+        tg_help = ctk.CTkFrame(f, fg_color=("gray92", "gray18"), corner_radius=10)
+        tg_help.grid(row=row, column=0, columnspan=2, padx=20, pady=(8, 4), sticky="ew")
+        tg_help.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            tg_help, text=t("SETTINGS_TG_HOW_TITLE"),
+            font=ctk.CTkFont(size=12, weight="bold"),
+            anchor="w",
+        ).grid(row=0, column=0, padx=14, pady=(10, 4), sticky="w")
+        ctk.CTkLabel(
+            tg_help, text=t("SETTINGS_TG_HOW_BODY"),
+            font=ctk.CTkFont(size=11),
+            justify="left", anchor="w",
+            text_color=("gray25", "gray75"),
+        ).grid(row=1, column=0, padx=14, pady=(0, 12), sticky="w")
+        row += 1
+
         # ── Tarayıcı ─────────────────────────────────────────────
         _section("SETTINGS_BROWSER", "🌐")
 
@@ -231,6 +277,9 @@ class SettingsTab(ctk.CTkFrame):
 
     def _toggle_smtp_pass(self):
         self._smtp_pass_entry.configure(show="" if self._smtp_pass_entry.cget("show") == "*" else "*")
+
+    def _toggle_tg_token(self):
+        self._tg_token_entry.configure(show="" if self._tg_token_entry.cget("show") == "*" else "*")
 
     def _change_lang(self, lang: str):
         from utils.i18n import set_lang
@@ -272,6 +321,28 @@ class SettingsTab(ctk.CTkFrame):
 
         threading.Thread(target=_do, daemon=True).start()
 
+    def _test_telegram(self):
+        self._tg_status.configure(text=t("SETTINGS_TG_TESTING"), text_color="gray")
+
+        def _set_status(text: str, color: str):
+            self.after(0, lambda: self._tg_status.configure(text=text, text_color=color))
+
+        def _do():
+            try:
+                from services.telegram_service import test_connection
+                ok, err = test_connection(
+                    token=self._tg_token_var.get().strip(),
+                    chat_id=self._tg_chat_id_var.get().strip(),
+                )
+                if ok:
+                    _set_status(t("SETTINGS_TG_OK"), "#2ecc71")
+                else:
+                    _set_status(f"{t('SETTINGS_TG_ERR')} {err[:80]}", "#e05555")
+            except Exception as e:
+                _set_status(f"{t('SETTINGS_TG_ERR')} {e}", "#e05555")
+
+        threading.Thread(target=_do, daemon=True).start()
+
     def _get_user_info(self) -> dict:
         return {
             "vorname":  self._v_vorname.get().strip(),
@@ -295,6 +366,13 @@ class SettingsTab(ctk.CTkFrame):
             "use_tls":  self._smtp_tls_var.get(),
         }
 
+    def _get_telegram_cfg(self) -> dict:
+        return {
+            "enabled": self._tg_enabled_var.get(),
+            "token":   self._tg_token_var.get().strip(),
+            "chat_id": self._tg_chat_id_var.get().strip(),
+        }
+
     def _save(self):
         cfg = load_config()
         cfg["openai_key"]           = self._api_key_var.get().strip()
@@ -310,6 +388,7 @@ class SettingsTab(ctk.CTkFrame):
         }
         cfg["user_info"] = self._get_user_info()
         cfg["smtp"]      = self._get_smtp_cfg()
+        cfg["telegram"]  = self._get_telegram_cfg()
         save_config(cfg)
         self._status.configure(text=t("SETTINGS_SAVED"), text_color="#2ecc71")
         self.after(2500, lambda: self._status.configure(text=""))
@@ -329,4 +408,5 @@ class SettingsTab(ctk.CTkFrame):
             },
             "user_info": self._get_user_info(),
             "smtp":      self._get_smtp_cfg(),
+            "telegram":  self._get_telegram_cfg(),
         }
