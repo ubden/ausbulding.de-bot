@@ -1,9 +1,10 @@
 import io
 import os
+import threading
 import webbrowser
 import customtkinter as ctk
 from PIL import Image
-from services.database import get_all_applications, get_stats, clear_all
+from services.database import get_applications_page, get_application_count, get_stats, clear_all
 from utils.i18n import t
 
 STATUS_COLORS = {
@@ -38,8 +39,10 @@ _COL_DEFS = [
     ("APPS_COL_LOCATION", 120, "w"),
     ("APPS_COL_STATUS",   145, "center"),
     ("APPS_COL_DATE",     110, "w"),
-    ("APPS_COL_PDF",       46, "center"),   # PDF preview button column
+    ("APPS_COL_PDF",       46, "center"),
 ]
+
+_PAGE_SIZE = 25
 
 
 def _columns():
@@ -55,6 +58,12 @@ class ApplicationsTab(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent", **kwargs)
         self._refresh_after_id = None
         self._dirty = True
+        # Lazy-load state
+        self._current_page: int = 0
+        self._rows_loaded: int = 0
+        self._total_count: int = 0
+        self._is_loading: bool = False
+        self._load_token: int = 0
         self._build()
         self.refresh()
 
@@ -129,8 +138,21 @@ class ApplicationsTab(ctk.CTkFrame):
             border_width=1,
             border_color=("gray78", "gray30"),
         )
-        self._scroll.grid(row=3, column=0, padx=16, pady=(0, 14), sticky="nsew")
+        self._scroll.grid(row=3, column=0, padx=16, pady=(0, 4), sticky="nsew")
         self._scroll.grid_columnconfigure(0, weight=1)
+
+        # ── Durum çubuğu (lazy-load göstergesi) ──────────────────────
+        self._status_bar = ctk.CTkFrame(self, fg_color="transparent")
+        self._status_bar.grid(row=4, column=0, padx=16, pady=(0, 10), sticky="ew")
+        self._status_bar.grid_columnconfigure(0, weight=1)
+        self._status_lbl = ctk.CTkLabel(
+            self._status_bar, text="",
+            font=ctk.CTkFont(size=11), text_color=("gray40", "gray60"),
+        )
+        self._status_lbl.grid(row=0, column=0)
+
+        # Scroll olaylarını dinle (canvas oluştuktan sonra)
+        self.after(300, self._bind_scroll)
 
     def _fill_header(self, parent):
         for col_i, (text, width, anchor) in enumerate(_columns()):
@@ -140,9 +162,34 @@ class ApplicationsTab(ctk.CTkFrame):
                 width=width, anchor=anchor,
             ).grid(row=0, column=col_i, padx=(6, 2), pady=8, sticky="w")
 
-    # ── Data ──────────────────────────────────────────────────────────
+    # ── Scroll event binding ──────────────────────────────────────────
+
+    def _bind_scroll(self):
+        try:
+            canvas = self._scroll._canvas
+            canvas.bind("<MouseWheel>", self._on_scroll_event, add="+")
+            canvas.bind("<Button-4>",   self._on_scroll_event, add="+")  # Linux scroll up
+            canvas.bind("<Button-5>",   self._on_scroll_event, add="+")  # Linux scroll down
+        except Exception:
+            pass
+
+    def _on_scroll_event(self, event=None):
+        self.after(80, self._check_scroll_bottom)
+
+    def _check_scroll_bottom(self):
+        if self._is_loading or self._rows_loaded >= self._total_count:
+            return
+        try:
+            _, end = self._scroll._canvas.yview()
+            if end >= 0.88:
+                self._load_more()
+        except Exception:
+            pass
+
+    # ── Async yükleme ──────────────────────────────────────────────────
 
     def refresh(self):
+        """Tüm satırları sıfırla ve baştan yükle."""
         if self._refresh_after_id is not None:
             try:
                 self.after_cancel(self._refresh_after_id)
@@ -150,30 +197,129 @@ class ApplicationsTab(ctk.CTkFrame):
                 pass
             self._refresh_after_id = None
         self._dirty = False
+        self._current_page = 0
+        self._rows_loaded = 0
+        self._is_loading = True
+        self._load_token += 1
+        token = self._load_token
+        self._show_loading()
+        threading.Thread(
+            target=self._bg_load,
+            args=(token, 0),
+            daemon=True,
+        ).start()
 
-        stats = get_stats()
-        for key, lbl in self._stat_labels.items():
-            lbl.configure(text=f"{t(_STAT_KEYS[key])}\n{stats.get(key, 0)}")
+    def _load_more(self):
+        """Bir sonraki sayfayı yükle ve mevcut satırlara ekle."""
+        if self._is_loading or self._rows_loaded >= self._total_count:
+            return
+        self._is_loading = True
+        self._current_page += 1
+        self._update_status("loading")
+        token = self._load_token  # token artırılmaz — mevcut yüklemeye ait
+        threading.Thread(
+            target=self._bg_load,
+            args=(token, self._current_page),
+            daemon=True,
+        ).start()
 
-        for w in self._scroll.winfo_children():
-            w.destroy()
+    def _bg_load(self, token: int, page: int):
+        try:
+            apps = get_applications_page(page, _PAGE_SIZE)
+            if page == 0:
+                count = get_application_count()
+                stats = get_stats()
+            else:
+                count = None
+                stats = None
+        except Exception as exc:
+            self.after(0, self._on_load_error, token, str(exc))
+            return
+        self.after(0, self._on_loaded, token, page, apps, count, stats)
 
-        apps = get_all_applications()
-        if not apps:
-            ctk.CTkLabel(
-                self._scroll,
-                text=t("APPS_EMPTY"),
-                text_color="gray",
-                font=ctk.CTkFont(size=13),
-            ).grid(row=0, column=0, padx=20, pady=50)
+    def _on_loaded(self, token: int, page: int, apps: list, count, stats):
+        if token != self._load_token:
+            self._is_loading = False
             return
 
+        if count is not None:
+            self._total_count = count
+        if stats is not None:
+            for key, lbl in self._stat_labels.items():
+                lbl.configure(text=f"{t(_STAT_KEYS[key])}\n{stats.get(key, 0)}")
+
+        is_first = (page == 0)
+        self._render_rows(apps, append=not is_first)
+        self._rows_loaded += len(apps)
+        self._is_loading = False
+        self._update_status("done")
+
+    def _on_load_error(self, token: int, err: str):
+        if token != self._load_token:
+            return
+        self._is_loading = False
+        for w in self._scroll.winfo_children():
+            w.destroy()
+        ctk.CTkLabel(
+            self._scroll, text=f"DB hatası: {err}",
+            text_color="#e74c3c", font=ctk.CTkFont(size=12),
+        ).grid(row=0, column=0, padx=20, pady=50)
+        self._status_lbl.configure(text="")
+
+    def _show_loading(self):
+        for w in self._scroll.winfo_children():
+            w.destroy()
+        ctk.CTkLabel(
+            self._scroll, text="Yükleniyor...", text_color="gray",
+            font=ctk.CTkFont(size=13),
+        ).grid(row=0, column=0, padx=20, pady=50)
+        self._status_lbl.configure(text="")
+
+    def _render_rows(self, apps: list, append: bool = False):
+        if not append:
+            for w in self._scroll.winfo_children():
+                w.destroy()
+            if not apps:
+                ctk.CTkLabel(
+                    self._scroll,
+                    text=t("APPS_EMPTY"),
+                    text_color="gray",
+                    font=ctk.CTkFont(size=13),
+                ).grid(row=0, column=0, padx=20, pady=50)
+                return
+
+        if not apps:
+            return
+
+        self._scroll.grid_columnconfigure(0, weight=1)
+        start = self._rows_loaded
         for i, app in enumerate(apps):
-            bg = ("gray92", "gray17") if i % 2 == 0 else ("white", "gray21")
+            abs_idx = start + i
+            bg = ("gray92", "gray17") if abs_idx % 2 == 0 else ("white", "gray21")
             row_frame = ctk.CTkFrame(self._scroll, fg_color=bg, corner_radius=5)
-            row_frame.grid(row=i, column=0, padx=4, pady=1, sticky="ew")
-            self._scroll.grid_columnconfigure(0, weight=1)
-            self._fill_row(row_frame, i + 1, app)
+            row_frame.grid(row=abs_idx, column=0, padx=4, pady=1, sticky="ew")
+            self._fill_row(row_frame, abs_idx + 1, app)
+
+    def _update_status(self, state: str):
+        if state == "loading":
+            self._status_lbl.configure(text="Yükleniyor...", text_color="gray")
+        elif state == "done":
+            if self._rows_loaded >= self._total_count:
+                if self._total_count == 0:
+                    self._status_lbl.configure(text="")
+                else:
+                    self._status_lbl.configure(
+                        text=f"Tüm kayıtlar yüklendi ({self._total_count})",
+                        text_color=("gray40", "gray60"),
+                    )
+            else:
+                remaining = self._total_count - self._rows_loaded
+                self._status_lbl.configure(
+                    text=f"{self._rows_loaded} / {self._total_count} kayıt  ·  {remaining} daha var, aşağı kaydırın",
+                    text_color=("gray40", "gray60"),
+                )
+
+    # ── Row ───────────────────────────────────────────────────────────
 
     def _fill_row(self, parent: ctk.CTkFrame, idx: int, app: dict):
         url     = app.get("url", "") or ""
@@ -247,7 +393,14 @@ class ApplicationsTab(ctk.CTkFrame):
             err_lbl.grid(row=1, column=1, columnspan=6, padx=(6, 6), pady=(0, 4), sticky="w")
             err_lbl.bind("<Button-1>", _open)
 
+    # ── Refresh scheduling (thread-safe) ─────────────────────────────
+
     def schedule_refresh(self, delay_ms: int = 700):
+        """Herhangi bir thread'den güvenle çağrılabilir."""
+        self._dirty = True
+        self.after(0, self._schedule_refresh_main, delay_ms)
+
+    def _schedule_refresh_main(self, delay_ms: int):
         self._dirty = True
         if self._refresh_after_id is not None:
             try:
@@ -283,7 +436,7 @@ class PDFPreviewModal(ctk.CTkToplevel):
     kurulu değilse sistem PDF görüntüleyicisini açmayı teklif eder.
     """
 
-    _RENDER_DPI = 150   # render kalitesi (yükseltmek daha net ama daha yavaş)
+    _RENDER_DPI = 150
 
     def __init__(self, master, pdf_path: str, label: str = ""):
         super().__init__(master)
@@ -295,7 +448,7 @@ class PDFPreviewModal(ctk.CTkToplevel):
         self.focus_set()
 
         self._pdf_path = pdf_path
-        self._ctk_images: list = []   # CTkImage referanslarını tut (GC'den koru)
+        self._ctk_images: list = []
 
         self._build()
 
@@ -338,7 +491,7 @@ class PDFPreviewModal(ctk.CTkToplevel):
         scroll.grid_columnconfigure(0, weight=1)
 
         try:
-            import fitz   # PyMuPDF
+            import fitz
             self._render_with_fitz(scroll)
         except ImportError:
             self._render_fallback(scroll, no_fitz=True)
@@ -347,7 +500,7 @@ class PDFPreviewModal(ctk.CTkToplevel):
 
     def _render_with_fitz(self, parent):
         doc = fitz.open(self._pdf_path)
-        scale = self._RENDER_DPI / 72   # 72 DPI is fitz default
+        scale = self._RENDER_DPI / 72
         mat   = fitz.Matrix(scale, scale)
 
         for page_num in range(len(doc)):
@@ -355,14 +508,13 @@ class PDFPreviewModal(ctk.CTkToplevel):
             pix  = page.get_pixmap(matrix=mat, alpha=False)
             img  = Image.open(io.BytesIO(pix.tobytes("png")))
 
-            # CTkImage: display at 96 dpi equivalent (half of 150)
             display_w = int(img.width * 72 / self._RENDER_DPI)
             display_h = int(img.height * 72 / self._RENDER_DPI)
             ctk_img = ctk.CTkImage(
                 light_image=img, dark_image=img,
                 size=(display_w, display_h),
             )
-            self._ctk_images.append(ctk_img)   # keep reference
+            self._ctk_images.append(ctk_img)
 
             lbl = ctk.CTkLabel(
                 parent, image=ctk_img, text="",

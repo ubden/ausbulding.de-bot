@@ -104,6 +104,7 @@ class BotRunner:
                     log=self.log,
                     stop_event=self._stop_event,
                     skip_pdf_anschreiben=cfg.get("skip_pdf_anschreiben", False),
+                    kurz_anschreiben=cfg.get("kurz_anschreiben", ""),
                 )
 
                 upsert_application(

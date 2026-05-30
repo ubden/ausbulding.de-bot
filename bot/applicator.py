@@ -40,6 +40,7 @@ def apply_to_job(
     log=None,
     stop_event=None,
     skip_pdf_anschreiben: bool = False,
+    kurz_anschreiben: str = "",
 ) -> tuple[str, str]:
     """Returns (status, error_message). error_message is '' on success."""
     def _log(msg):
@@ -171,28 +172,37 @@ def apply_to_job(
         _click_profile_import(page, "Lebenslauf", _log)
         _wait(page, 1500, stop_event)
 
-        anschreiben = generate_anschreiben(
-            title, company, job_description, openai_key, user_background
-        )
+        if kurz_anschreiben:
+            anschreiben = kurz_anschreiben
+            _log("    Hazır Anschreiben kullanılıyor (AI çağrısı atlandı).")
+        else:
+            anschreiben = generate_anschreiben(
+                title, company, job_description, openai_key, user_background
+            )
 
         if anschreiben:
             job["anschreiben_text"] = anschreiben
-            # PDF'i her zaman kayıt amacıyla üret; varsa güncel font/metinle yeniden yazar.
-            try:
-                pdf_path = generate_anschreiben_pdf(
-                    anschreiben, title, company, user_info or {}, job_id=job_id
-                )
-                _log(f"    Anschreiben PDF kaydedildi: {os.path.basename(os.path.dirname(pdf_path))}/")
-            except Exception as e:
-                _log(f"    PDF oluşturma hatası: {e}")
-                pdf_path = None
+
+            # PDF'i yalnızca upload alanı olan ilanlar için üret
+            needs_pdf = _has_anschreiben_upload(page)
+            if needs_pdf:
+                try:
+                    pdf_path = generate_anschreiben_pdf(
+                        anschreiben, title, company, user_info or {}, job_id=job_id
+                    )
+                    _log(f"    Anschreiben PDF kaydedildi: {os.path.basename(os.path.dirname(pdf_path))}/")
+                except Exception as e:
+                    _log(f"    PDF oluşturma hatası: {e}")
+                    pdf_path = None
+            else:
+                _log("    PDF upload alanı yok — PDF oluşturma atlandı.")
 
             # Metin alanını doldur (Kurz-Anschreiben)
             _fill_anschreiben_humanlike(page, anschreiben, _log, stop_event)
             _wait(page, 800, stop_event)
 
-            # PDF upload alanı varsa yükle (zaten oluşturulmuş PDF'i kullan)
-            if pdf_path and _has_anschreiben_upload(page):
+            # PDF upload alanı varsa yükle
+            if pdf_path and needs_pdf:
                 _log("    PDF Anschreiben upload alanı bulundu — yükleniyor...")
                 _upload_pdf_file(page, pdf_path, _log)
         else:
