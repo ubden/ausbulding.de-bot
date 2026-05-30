@@ -262,19 +262,20 @@ def _is_already_applied(page: Page) -> bool:
 
 def _click_apply_button(page: Page, log, stop_event=None) -> bool:
     # Öncelik sırası: devam eden başvuru > yeni başvuru
+    # NOT: "a:has-text('Bewerben')" ve ".cta-button" gibi geniş seçiciler
+    # navigasyon linklerini de eşleştirebilir — kullanılmıyor.
     selectors = [
         # Devam eden direkt başvuru (id veya class ile)
         "#t-link-direct-application-continuation",
         "a.js-direct-application-link",
         "a[id*='continuation']",
-        # Yeni başvuru butonları
+        # Yeni başvuru: tam metin eşleşmesi, sadece button veya tanımlı a elementleri
         "a:has-text('Bewerbung fortführen')",
         "button:has-text('Bewerbung fortführen')",
         "a:has-text('Jetzt bewerben')",
         "button:has-text('Jetzt bewerben')",
-        "a:has-text('Bewerben')",
-        # Genel CTA (suppressed olanı hariç tut)
-        ".cta-button:not(.btn-filled__suppressed)",
+        "button:has-text('Bewerben')",
+        "a.btn-filled:has-text('Bewerben'):not(.btn-filled__suppressed)",
     ]
 
     # Önce viewport'ta ara
@@ -617,25 +618,32 @@ def _get_contact_person(page: Page) -> dict:
 
 
 def _click_review(page: Page, log, stop_event=None) -> bool:
-    """Überprüfen butonuna bas — 3 deneme, her seferinde scroll + bekle.
-    Aynı data-testid başka adımlarda da kullanıldığı için metne göre ilerler.
-    """
+    """Überprüfen butonuna bas — 5 deneme, her seferinde scroll + bekle."""
     review_selectors = [
         "button:has-text('Überprüfen')",
+        "button:has-text('Prüfen')",
         "[data-testid='second-button']:has-text('Überprüfen')",
+        "[data-testid='second-button']:has-text('Prüfen')",
+        "[data-testid='second-button']",
         "button:has-text('Weiter zur Übersicht')",
         "button:has-text('Zur Zusammenfassung')",
         "button:has-text('Weiter zur Zusammenfassung')",
+        "button:has-text('Weiter')",
+        # JS evaluate ile partial/case-insensitive eşleşme için fallback aşağıda
     ]
 
-    for attempt in range(3):
+    for attempt in range(5):
         if stop_event and stop_event.is_set():
             return False
 
-        # Her denemede alta in; Überprüfen genellikle sticky footer'da.
+        # Sayfanın yüklenmesini bekle, ardından alt kısma in.
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=5000)
+        except Exception:
+            pass
         try:
             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(600)
         except Exception:
             pass
 
@@ -644,7 +652,7 @@ def _click_review(page: Page, log, stop_event=None) -> bool:
                 btn = page.locator(sel).first
                 if btn.count() == 0:
                     continue
-                btn.wait_for(state="visible", timeout=2000)
+                btn.wait_for(state="visible", timeout=2500)
                 if not btn.is_enabled():
                     continue
                 _scroll_to(page, btn)
@@ -655,20 +663,34 @@ def _click_review(page: Page, log, stop_event=None) -> bool:
             except Exception:
                 continue
 
-        # Ancak gerçek submit butonu görünüyorsa review adımı zaten geçilmiş demektir.
+        # JS ile buton ara: metin içinde "prüf" geçen herhangi bir buton
+        try:
+            clicked = page.evaluate("""() => {
+                const btns = Array.from(document.querySelectorAll('button'));
+                const target = btns.find(b => /pr\u00fcf/i.test(b.innerText));
+                if (target && !target.disabled) { target.click(); return true; }
+                return false;
+            }""")
+            if clicked:
+                log(f"    Überprüfen JS ile tıklandı (deneme {attempt + 1}).")
+                _wait_for_review_page(page, stop_event, timeout_ms=10000)
+                return True
+        except Exception:
+            pass
+
+        # Submit sayfasına geçilmişse zaten başarılı.
         if _is_on_review_page(page):
             log("    Özet sayfası tespit edildi — Bewerbung abschicken bekleniyor.")
             return True
 
-        log(f"    Überprüfen butonu bulunamadı (deneme {attempt + 1}/3), bekleniyor...")
-        page.wait_for_timeout(2000)
+        log(f"    Überprüfen butonu bulunamadı (deneme {attempt + 1}/5), bekleniyor...")
+        page.wait_for_timeout(3500)
 
-    # Son şans: submit butonu var mı?
     if _is_on_review_page(page):
         log("    Özet sayfası tespit edildi — devam ediliyor.")
         return True
 
-    log("    Überprüfen butonu 3 denemede de bulunamadı.")
+    log("    Überprüfen butonu 5 denemede de bulunamadı.")
     return False
 
 
