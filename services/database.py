@@ -11,6 +11,14 @@ def _base_dir() -> str:
 
 
 DB_PATH = os.path.join(_base_dir(), "applications.db")
+APPLICATION_KEYS = [
+    "job_id", "title", "company", "location", "url", "status",
+    "error_message", "applied_at", "created_at", "pdf_path",
+]
+APPLICATION_SELECT = (
+    "SELECT job_id, title, company, location, url, status, "
+    "error_message, applied_at, created_at, pdf_path FROM applications"
+)
 
 
 def _connect():
@@ -98,11 +106,25 @@ def job_exists(job_id: str) -> bool:
 def get_all_applications() -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT job_id, title, company, location, url, status, error_message, applied_at, created_at, pdf_path "
-            "FROM applications ORDER BY created_at DESC"
+            f"{APPLICATION_SELECT} ORDER BY created_at DESC"
         ).fetchall()
-    keys = ["job_id", "title", "company", "location", "url", "status", "error_message", "applied_at", "created_at", "pdf_path"]
-    return [dict(zip(keys, row)) for row in rows]
+    return [dict(zip(APPLICATION_KEYS, row)) for row in rows]
+
+
+def get_applications_page(limit: int = 50, offset: int = 0) -> list[dict]:
+    limit = max(1, int(limit or 50))
+    offset = max(0, int(offset or 0))
+    with _connect() as conn:
+        rows = conn.execute(
+            f"{APPLICATION_SELECT} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+    return [dict(zip(APPLICATION_KEYS, row)) for row in rows]
+
+
+def get_applications_count() -> int:
+    with _connect() as conn:
+        return conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
 
 
 def get_stats() -> dict:

@@ -159,7 +159,7 @@ class SettingsTab(ctk.CTkFrame):
         self._v_nachname = _info_row("SETTINGS_NACHNAME", "nachname", "Mustermann")
         self._v_strasse  = _info_row("SETTINGS_STRASSE",  "strasse",  "Musterstraße 1")
         self._v_plz      = _info_row("SETTINGS_PLZ",      "plz",      "69115")
-        self._v_pstadt   = _info_row("SETTINGS_STADT",    "pstadt",   "Heidelberg")
+        self._v_pstadt   = _info_row("SETTINGS_STADT",    "stadt",    "Heidelberg")
 
         # ── SMTP ─────────────────────────────────────────────────
         _section("SETTINGS_SMTP", "📧")

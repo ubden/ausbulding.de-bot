@@ -1,6 +1,5 @@
 import os
 import time
-import random
 from playwright.sync_api import Page
 from services.openai_service import generate_anschreiben
 from services.pdf_service import generate_anschreiben_pdf
@@ -141,14 +140,14 @@ def apply_to_job(
         _wait(page, 1000, stop_event)
         _next_step(page, stop_event)
         if _stopped():
-            return "skipped", ""
+            return "skipped", "", pdf_path
 
         # ── Adım 2: İletişim ──────────────────────────────────────
         _log("    Adım 2: İletişim verileri...")
         _wait(page, 1500, stop_event)
         _next_step(page, stop_event)
         if _stopped():
-            return "skipped", ""
+            return "skipped", "", pdf_path
 
         # ── Adım 3: Eğitim / Zeugnisse ───────────────────────────
         _log("    Adım 3: Schulische Laufbahn...")
@@ -157,14 +156,16 @@ def apply_to_job(
         _wait(page, 2000, stop_event)
         _next_step(page, stop_event)
         if _stopped():
-            return "skipped", ""
+            return "skipped", "", pdf_path
 
         # ── Adım 4: Anschreiben ───────────────────────────────────
         _log("    Adım 4: Anschreiben kontrol ediliyor...")
         _wait(page, 1500, stop_event)
 
+        requires_pdf = _has_anschreiben_upload(page)
+
         # PDF upload gerektiriyor mu? skip_pdf_anschreiben açıksa atla
-        if skip_pdf_anschreiben and _has_anschreiben_upload(page):
+        if skip_pdf_anschreiben and requires_pdf:
             _log("    PDF Anschreiben gerekli — 'Anschreiben atla' açık, atlanıyor.")
             return "skipped", "PDF Anschreiben gerekli, atlandı", None
 
@@ -177,28 +178,31 @@ def apply_to_job(
 
         if anschreiben:
             job["anschreiben_text"] = anschreiben
-            # PDF'i her zaman kayıt amacıyla üret; varsa güncel font/metinle yeniden yazar.
-            try:
-                pdf_path = generate_anschreiben_pdf(
-                    anschreiben, title, company, user_info or {}, job_id=job_id
-                )
-                _log(f"    Anschreiben PDF kaydedildi: {os.path.basename(os.path.dirname(pdf_path))}/")
-            except Exception as e:
-                _log(f"    PDF oluşturma hatası: {e}")
-                pdf_path = None
+            if requires_pdf:
+                try:
+                    pdf_path = generate_anschreiben_pdf(
+                        anschreiben, title, company, user_info or {}, job_id=job_id
+                    )
+                    _log(f"    Anschreiben PDF kaydedildi: {os.path.basename(os.path.dirname(pdf_path))}/")
+                except Exception as e:
+                    _log(f"    PDF oluşturma hatası: {e}")
+                    pdf_path = None
+            else:
+                _log("    Kurz-Anschreiben kabul ediliyor — PDF oluşturulmadı.")
 
             # Metin alanını doldur (Kurz-Anschreiben)
-            _fill_anschreiben_humanlike(page, anschreiben, _log, stop_event)
+            _fill_anschreiben_fast(page, anschreiben, _log, stop_event)
             _wait(page, 800, stop_event)
 
             # PDF upload alanı varsa yükle (zaten oluşturulmuş PDF'i kullan)
-            if pdf_path and _has_anschreiben_upload(page):
+            if requires_pdf and pdf_path:
                 _log("    PDF Anschreiben upload alanı bulundu — yükleniyor...")
                 _upload_pdf_file(page, pdf_path, _log)
         else:
             _log("    Anschreiben üretilemedi, boş bırakıldı.")
 
-        _select_pdf_anschreiben(page)
+        if requires_pdf:
+            _select_pdf_anschreiben(page)
         _wait(page, 1000, stop_event)
         _next_step(page, stop_event)
         if _stopped():
@@ -391,12 +395,12 @@ def _click_profile_import(page: Page, doc_type: str, log):
         pass
 
 
-def _fill_anschreiben_humanlike(page: Page, text: str, log, stop_event=None):
-    """Anschreiben'i insan gibi — harf harf değil, kelime kelime yaz."""
+def _fill_anschreiben_fast(page: Page, text: str, log, stop_event=None):
+    """Kurz-Anschreiben alanını tek seferde doldur; gerekirse düşük maliyetli fallback kullan."""
     selectors = [
         "textarea[name*='anschreiben']", "textarea[name*='coverLetter']",
         "textarea[name*='motivation']", "textarea[placeholder*='Anschreiben']",
-        "textarea[placeholder*='Kurz']", "[contenteditable='true']", "textarea",
+        "textarea[placeholder*='Kurz']", "textarea",
     ]
     for sel in selectors:
         try:
@@ -404,27 +408,48 @@ def _fill_anschreiben_humanlike(page: Page, text: str, log, stop_event=None):
             if area.count() == 0 or not area.is_visible():
                 continue
             _scroll_to(page, area)
-            area.click()
-            area.fill("")  # temizle
-
-            # Kelimeleri küçük rastgele gecikmelerle yaz
-            words = text.split(" ")
-            typed = ""
-            for i, word in enumerate(words):
-                if stop_event and stop_event.is_set():
-                    return
-                chunk = word + (" " if i < len(words) - 1 else "")
-                area.type(chunk, delay=random.randint(30, 80))
-                typed += chunk
-                # Her 8-12 kelimede bir kısa mola
-                if (i + 1) % random.randint(8, 12) == 0:
-                    page.wait_for_timeout(random.randint(200, 500))
-
-            log(f"    Kurz-Anschreiben yazıldı ({len(text)} karakter).")
+            area.fill(text)
+            _dispatch_input_events(area)
+            log(f"    Kurz-Anschreiben hızlı dolduruldu ({len(text)} karakter).")
             return
         except Exception:
             continue
+
+    try:
+        editor = page.locator("[contenteditable='true']").first
+        if editor.count() > 0 and editor.is_visible():
+            _scroll_to(page, editor)
+            editor.evaluate(
+                """(el, value) => {
+                    el.focus();
+                    el.textContent = value;
+                    el.dispatchEvent(new InputEvent('input', {
+                        bubbles: true,
+                        inputType: 'insertText',
+                        data: value
+                    }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }""",
+                text,
+            )
+            log(f"    Kurz-Anschreiben editöre hızlı aktarıldı ({len(text)} karakter).")
+            return
+    except Exception:
+        pass
+
     log("    Anschreiben alanı bulunamadı.")
+
+
+def _dispatch_input_events(locator):
+    try:
+        locator.evaluate(
+            """el => {
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }"""
+        )
+    except Exception:
+        pass
 
 
 def _has_anschreiben_upload(page: Page) -> bool:

@@ -247,19 +247,25 @@ class App(ctk.CTk):
         self._bot_tab.push_status(text)
 
     def _on_job_done(self, job: dict):
-        self._scanned_count += 1
-        if job.get("status") == "applied":
-            self._applied_count += 1
-        self._bot_tab.push_counter(
-            f"{t('RUNNER_APPLIED')} {self._applied_count}  |  "
-            f"{t('RUNNER_SKIPPED')} {self._scanned_count}"
-        )
-        if self._is_active_tab("TAB_APPLICATIONS"):
-            self._apps_tab.schedule_refresh()
-        else:
-            self._apps_tab.mark_dirty()
+        def _update_ui():
+            self._scanned_count += 1
+            if job.get("status") == "applied":
+                self._applied_count += 1
+            self._bot_tab.push_counter(
+                f"{t('RUNNER_APPLIED')} {self._applied_count}  |  "
+                f"{t('RUNNER_SKIPPED')} {self._scanned_count}"
+            )
+            if self._is_active_tab("TAB_APPLICATIONS"):
+                self._apps_tab.schedule_refresh(delay_ms=1600)
+            else:
+                self._apps_tab.mark_dirty()
 
-        if self._is_active_tab("TAB_CONTACTS"):
-            self._contacts_tab.schedule_refresh()
-        else:
-            self._contacts_tab.mark_dirty()
+            if self._is_active_tab("TAB_CONTACTS"):
+                self._contacts_tab.schedule_refresh(delay_ms=1800)
+            else:
+                self._contacts_tab.mark_dirty()
+
+        try:
+            self.after(0, _update_ui)
+        except Exception:
+            pass

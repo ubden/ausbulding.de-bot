@@ -3,8 +3,15 @@ import os
 import webbrowser
 import customtkinter as ctk
 from PIL import Image
-from services.database import get_all_applications, get_stats, clear_all
+from services.database import (
+    get_applications_count,
+    get_applications_page,
+    get_stats,
+    clear_all,
+)
 from utils.i18n import t
+
+PAGE_SIZE = 50
 
 STATUS_COLORS = {
     "applied":         "#1a9b4f",
@@ -55,6 +62,8 @@ class ApplicationsTab(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent", **kwargs)
         self._refresh_after_id = None
         self._dirty = True
+        self._loaded_count = 0
+        self._total_count = 0
         self._build()
         self.refresh()
 
@@ -63,6 +72,7 @@ class ApplicationsTab(ctk.CTkFrame):
     def _build(self):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(3, weight=1)
+        self.grid_rowconfigure(4, weight=0)
 
         # ── Başlık kartı ─────────────────────────────────────────────
         top_card = ctk.CTkFrame(self, corner_radius=12, border_width=1, border_color=("gray78", "gray30"))
@@ -132,6 +142,28 @@ class ApplicationsTab(ctk.CTkFrame):
         self._scroll.grid(row=3, column=0, padx=16, pady=(0, 14), sticky="nsew")
         self._scroll.grid_columnconfigure(0, weight=1)
 
+        self._load_more_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._load_more_frame.grid(row=4, column=0, padx=16, pady=(0, 14), sticky="ew")
+        self._load_more_frame.grid_columnconfigure(0, weight=1)
+        self._loaded_label = ctk.CTkLabel(
+            self._load_more_frame,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+        )
+        self._loaded_label.grid(row=0, column=0, padx=(4, 12), sticky="w")
+        self._load_more_btn = ctk.CTkButton(
+            self._load_more_frame,
+            text=t("APPS_LOAD_MORE"),
+            width=150,
+            height=32,
+            fg_color="#1f6aa5",
+            hover_color="#144d7a",
+            command=self._load_next_page,
+        )
+        self._load_more_btn.grid(row=0, column=1, sticky="e")
+        self._load_more_frame.grid_remove()
+
     def _fill_header(self, parent):
         for col_i, (text, width, anchor) in enumerate(_columns()):
             ctk.CTkLabel(
@@ -155,25 +187,59 @@ class ApplicationsTab(ctk.CTkFrame):
         for key, lbl in self._stat_labels.items():
             lbl.configure(text=f"{t(_STAT_KEYS[key])}\n{stats.get(key, 0)}")
 
+        self._loaded_count = 0
+        self._total_count = get_applications_count()
         for w in self._scroll.winfo_children():
             w.destroy()
 
-        apps = get_all_applications()
-        if not apps:
+        if self._total_count == 0:
             ctk.CTkLabel(
                 self._scroll,
                 text=t("APPS_EMPTY"),
                 text_color="gray",
                 font=ctk.CTkFont(size=13),
             ).grid(row=0, column=0, padx=20, pady=50)
+            self._update_load_more_controls()
             return
 
-        for i, app in enumerate(apps):
-            bg = ("gray92", "gray17") if i % 2 == 0 else ("white", "gray21")
+        self._load_next_page()
+
+    def _load_next_page(self):
+        if self._total_count == 0:
+            self._total_count = get_applications_count()
+        if self._loaded_count >= self._total_count:
+            self._update_load_more_controls()
+            return
+
+        apps = get_applications_page(PAGE_SIZE, self._loaded_count)
+        for app in apps:
+            row_i = self._loaded_count
+            bg = ("gray92", "gray17") if row_i % 2 == 0 else ("white", "gray21")
             row_frame = ctk.CTkFrame(self._scroll, fg_color=bg, corner_radius=5)
-            row_frame.grid(row=i, column=0, padx=4, pady=1, sticky="ew")
+            row_frame.grid(row=row_i, column=0, padx=4, pady=1, sticky="ew")
             self._scroll.grid_columnconfigure(0, weight=1)
-            self._fill_row(row_frame, i + 1, app)
+            self._fill_row(row_frame, row_i + 1, app)
+            self._loaded_count += 1
+
+        self._update_load_more_controls()
+
+    def _update_load_more_controls(self):
+        if self._total_count <= PAGE_SIZE:
+            self._load_more_frame.grid_remove()
+            return
+
+        self._load_more_frame.grid()
+        self._loaded_label.configure(
+            text=t("APPS_LOADED_COUNT").format(
+                loaded=self._loaded_count,
+                total=self._total_count,
+            )
+        )
+        has_more = self._loaded_count < self._total_count
+        self._load_more_btn.configure(
+            state="normal" if has_more else "disabled",
+            text=t("APPS_LOAD_MORE"),
+        )
 
     def _fill_row(self, parent: ctk.CTkFrame, idx: int, app: dict):
         url     = app.get("url", "") or ""
@@ -247,7 +313,7 @@ class ApplicationsTab(ctk.CTkFrame):
             err_lbl.grid(row=1, column=1, columnspan=6, padx=(6, 6), pady=(0, 4), sticky="w")
             err_lbl.bind("<Button-1>", _open)
 
-    def schedule_refresh(self, delay_ms: int = 700):
+    def schedule_refresh(self, delay_ms: int = 1200):
         self._dirty = True
         if self._refresh_after_id is not None:
             try:

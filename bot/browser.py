@@ -40,10 +40,18 @@ class BrowserManager:
         self._context.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });"
         )
+        self._context.route("**/*", self._route_lightweight_assets)
         self.page = self._context.new_page()
         self.page.set_default_timeout(15000)
         self.page.set_default_navigation_timeout(45000)
         return self.page
+
+    @staticmethod
+    def _route_lightweight_assets(route):
+        if route.request.resource_type in ("image", "font", "media"):
+            route.abort()
+        else:
+            route.continue_()
 
     def stop(self):
         try:

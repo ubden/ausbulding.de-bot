@@ -27,6 +27,14 @@ DEFAULTS = {
         "abschluss": "",
         "branche": "",
     },
+    "user_info": {
+        "vorname": "",
+        "nachname": "",
+        "strasse": "",
+        "plz": "",
+        "stadt": "",
+        "email": "",
+    },
     "smtp": {
         "host": "",
         "port": 587,
@@ -42,19 +50,36 @@ DEFAULTS = {
 }
 
 
+def _merge_defaults(defaults: dict, data: dict) -> dict:
+    merged = dict(defaults)
+    for key, value in (data or {}).items():
+        if isinstance(merged.get(key), dict) and isinstance(value, dict):
+            merged[key] = _merge_defaults(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _normalize_config(cfg: dict) -> dict:
+    user_info = cfg.setdefault("user_info", {})
+    if not user_info.get("stadt") and user_info.get("pstadt"):
+        user_info["stadt"] = user_info.get("pstadt", "")
+    user_info.pop("pstadt", None)
+    return cfg
+
+
 def load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
-        return dict(DEFAULTS)
+        return _normalize_config(_merge_defaults(DEFAULTS, {}))
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-        merged = dict(DEFAULTS)
-        merged.update(data)
-        return merged
+        return _normalize_config(_merge_defaults(DEFAULTS, data))
     except Exception:
-        return dict(DEFAULTS)
+        return _normalize_config(_merge_defaults(DEFAULTS, {}))
 
 
 def save_config(data: dict) -> None:
+    data = _normalize_config(_merge_defaults(DEFAULTS, data or {}))
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
