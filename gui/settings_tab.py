@@ -104,6 +104,14 @@ class SettingsTab(ctk.CTkFrame):
                      font=ctk.CTkFont(size=10), text_color="gray").grid(
             row=row, column=1, padx=(0, 20), sticky="w"); row += 1
 
+        ctk.CTkLabel(f, text=t("SETTINGS_ANSCHREIBEN"), anchor="ne").grid(row=row, column=0, padx=20, pady=6, sticky="ne")
+        self._anschreiben_text = ctk.CTkTextbox(f, width=380, height=140)
+        self._anschreiben_text.insert("1.0", self._cfg.get("kurz_anschreiben", ""))
+        self._anschreiben_text.grid(row=row, column=1, padx=(0, 20), pady=6, sticky="w"); row += 1
+        ctk.CTkLabel(f, text=t("SETTINGS_ANSCHREIBEN_HINT"),
+                     font=ctk.CTkFont(size=10), text_color="gray").grid(
+            row=row, column=1, padx=(0, 20), sticky="w"); row += 1
+
         # ── Arama ────────────────────────────────────────────────
         _section("SETTINGS_SEARCH", "🔍")
 
@@ -377,6 +385,7 @@ class SettingsTab(ctk.CTkFrame):
         cfg = load_config()
         cfg["openai_key"]           = self._api_key_var.get().strip()
         cfg["user_background"]      = self._bg_text.get("1.0", "end").strip()
+        cfg["kurz_anschreiben"]     = self._anschreiben_text.get("1.0", "end").strip()
         cfg["city"]                 = self._city_var.get().strip()
         cfg["radius"]               = self._radius_var.get()
         cfg["headless"]             = self._headless_var.get()
@@ -397,6 +406,7 @@ class SettingsTab(ctk.CTkFrame):
         return {
             "openai_key":           self._api_key_var.get().strip(),
             "user_background":      self._bg_text.get("1.0", "end").strip(),
+            "kurz_anschreiben":     self._anschreiben_text.get("1.0", "end").strip(),
             "city":                 self._city_var.get().strip(),
             "radius":               self._radius_var.get(),
             "headless":             self._headless_var.get(),

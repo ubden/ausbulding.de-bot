@@ -3,7 +3,7 @@ import customtkinter as ctk
 from datetime import datetime
 from utils.i18n import t
 
-_MAX_QUEUE_ITEMS = 250
+_MAX_QUEUE_ITEMS = 25
 _MAX_LOG_LINES = 1200
 
 _LOG_TAG_COLORS = {
@@ -192,7 +192,7 @@ class BotTab(ctk.CTkFrame):
         if stopped:
             self._on_bot_stopped()
 
-        self.after(25 if not self._log_queue.empty() else 90, self._poll_queue)
+        self.after(50 if not self._log_queue.empty() else 150, self._poll_queue)
 
     def _text_widget(self):
         return getattr(self._log_box, "_textbox", self._log_box)

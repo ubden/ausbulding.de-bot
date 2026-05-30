@@ -14,7 +14,10 @@ DB_PATH = os.path.join(_base_dir(), "applications.db")
 
 
 def _connect():
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
 
 
 def init_db() -> None:
@@ -54,6 +57,14 @@ def init_db() -> None:
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_apps_created_at "
+            "ON applications(created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_apps_status "
+            "ON applications(status)"
+        )
         conn.commit()
 
 
@@ -103,6 +114,25 @@ def get_all_applications() -> list[dict]:
         ).fetchall()
     keys = ["job_id", "title", "company", "location", "url", "status", "error_message", "applied_at", "created_at", "pdf_path"]
     return [dict(zip(keys, row)) for row in rows]
+
+
+def get_applications_page(page: int = 0, page_size: int = 25) -> list[dict]:
+    offset = page * page_size
+    keys = ["job_id", "title", "company", "location", "url", "status",
+            "error_message", "applied_at", "created_at", "pdf_path"]
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT job_id, title, company, location, url, status, "
+            "error_message, applied_at, created_at, pdf_path "
+            "FROM applications ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (page_size, offset),
+        ).fetchall()
+    return [dict(zip(keys, row)) for row in rows]
+
+
+def get_application_count() -> int:
+    with _connect() as conn:
+        return conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
 
 
 def get_stats() -> dict:
