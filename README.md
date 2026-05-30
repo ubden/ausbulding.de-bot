@@ -50,20 +50,19 @@
 <br/>
 
 **Login Tab — Account credentials + Profile warning**
-<img width="1162" height="852" alt="image" src="https://github.com/user-attachments/assets/c0642e54-86e9-4429-ac9d-089c3bca405c" />
+> *(Add `screenshots/login.png` here)*
 
 **Bot Tab — Start, keyword filter, live log**
-<img width="956" height="809" alt="image" src="https://github.com/user-attachments/assets/b66456d9-a996-4925-93f1-2f94aeb6caf8" />
-
+> *(Add `screenshots/bot.png` here)*
 
 **Settings Tab — OpenAI, SMTP, Telegram, filters**
-<img width="1162" height="852" alt="image" src="https://github.com/user-attachments/assets/368d97a0-2738-467f-997b-d0110cea022f" />
+> *(Add `screenshots/settings.png` here)*
 
 **Applications Tab — Table and statistics**
-<img width="1162" height="852" alt="image" src="https://github.com/user-attachments/assets/9205fc74-7478-4844-997d-3a6839ee0ba2" />
+> *(Add `screenshots/applications.png` here)*
 
 **Contacts Tab — Contact list and mail sending**
-<img width="1162" height="852" alt="image" src="https://github.com/user-attachments/assets/56c6a8b9-ad81-47e6-bfaa-5694ca9dc0c6" />
+> *(Add `screenshots/contacts.png` here)*
 
 </details>
 

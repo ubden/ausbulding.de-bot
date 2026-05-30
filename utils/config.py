@@ -20,7 +20,6 @@ DEFAULTS = {
     "city": "Heidelberg",
     "radius": "25",
     "user_background": "",
-    "kurz_anschreiben": "",
     "headless": False,
     "skip_pdf_anschreiben": False,
     "filters": {

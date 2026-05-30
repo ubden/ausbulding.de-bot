@@ -40,7 +40,6 @@ def apply_to_job(
     log=None,
     stop_event=None,
     skip_pdf_anschreiben: bool = False,
-    kurz_anschreiben: str = "",
 ) -> tuple[str, str]:
     """Returns (status, error_message). error_message is '' on success."""
     def _log(msg):
@@ -172,37 +171,28 @@ def apply_to_job(
         _click_profile_import(page, "Lebenslauf", _log)
         _wait(page, 1500, stop_event)
 
-        if kurz_anschreiben:
-            anschreiben = kurz_anschreiben
-            _log("    Hazır Anschreiben kullanılıyor (AI çağrısı atlandı).")
-        else:
-            anschreiben = generate_anschreiben(
-                title, company, job_description, openai_key, user_background
-            )
+        anschreiben = generate_anschreiben(
+            title, company, job_description, openai_key, user_background
+        )
 
         if anschreiben:
             job["anschreiben_text"] = anschreiben
-
-            # PDF'i yalnızca upload alanı olan ilanlar için üret
-            needs_pdf = _has_anschreiben_upload(page)
-            if needs_pdf:
-                try:
-                    pdf_path = generate_anschreiben_pdf(
-                        anschreiben, title, company, user_info or {}, job_id=job_id
-                    )
-                    _log(f"    Anschreiben PDF kaydedildi: {os.path.basename(os.path.dirname(pdf_path))}/")
-                except Exception as e:
-                    _log(f"    PDF oluşturma hatası: {e}")
-                    pdf_path = None
-            else:
-                _log("    PDF upload alanı yok — PDF oluşturma atlandı.")
+            # PDF'i her zaman kayıt amacıyla üret; varsa güncel font/metinle yeniden yazar.
+            try:
+                pdf_path = generate_anschreiben_pdf(
+                    anschreiben, title, company, user_info or {}, job_id=job_id
+                )
+                _log(f"    Anschreiben PDF kaydedildi: {os.path.basename(os.path.dirname(pdf_path))}/")
+            except Exception as e:
+                _log(f"    PDF oluşturma hatası: {e}")
+                pdf_path = None
 
             # Metin alanını doldur (Kurz-Anschreiben)
             _fill_anschreiben_humanlike(page, anschreiben, _log, stop_event)
             _wait(page, 800, stop_event)
 
-            # PDF upload alanı varsa yükle
-            if pdf_path and needs_pdf:
+            # PDF upload alanı varsa yükle (zaten oluşturulmuş PDF'i kullan)
+            if pdf_path and _has_anschreiben_upload(page):
                 _log("    PDF Anschreiben upload alanı bulundu — yükleniyor...")
                 _upload_pdf_file(page, pdf_path, _log)
         else:
@@ -262,20 +252,19 @@ def _is_already_applied(page: Page) -> bool:
 
 def _click_apply_button(page: Page, log, stop_event=None) -> bool:
     # Öncelik sırası: devam eden başvuru > yeni başvuru
-    # NOT: "a:has-text('Bewerben')" ve ".cta-button" gibi geniş seçiciler
-    # navigasyon linklerini de eşleştirebilir — kullanılmıyor.
     selectors = [
         # Devam eden direkt başvuru (id veya class ile)
         "#t-link-direct-application-continuation",
         "a.js-direct-application-link",
         "a[id*='continuation']",
-        # Yeni başvuru: tam metin eşleşmesi, sadece button veya tanımlı a elementleri
+        # Yeni başvuru butonları
         "a:has-text('Bewerbung fortführen')",
         "button:has-text('Bewerbung fortführen')",
         "a:has-text('Jetzt bewerben')",
         "button:has-text('Jetzt bewerben')",
-        "button:has-text('Bewerben')",
-        "a.btn-filled:has-text('Bewerben'):not(.btn-filled__suppressed)",
+        "a:has-text('Bewerben')",
+        # Genel CTA (suppressed olanı hariç tut)
+        ".cta-button:not(.btn-filled__suppressed)",
     ]
 
     # Önce viewport'ta ara
@@ -618,32 +607,25 @@ def _get_contact_person(page: Page) -> dict:
 
 
 def _click_review(page: Page, log, stop_event=None) -> bool:
-    """Überprüfen butonuna bas — 5 deneme, her seferinde scroll + bekle."""
+    """Überprüfen butonuna bas — 3 deneme, her seferinde scroll + bekle.
+    Aynı data-testid başka adımlarda da kullanıldığı için metne göre ilerler.
+    """
     review_selectors = [
         "button:has-text('Überprüfen')",
-        "button:has-text('Prüfen')",
         "[data-testid='second-button']:has-text('Überprüfen')",
-        "[data-testid='second-button']:has-text('Prüfen')",
-        "[data-testid='second-button']",
         "button:has-text('Weiter zur Übersicht')",
         "button:has-text('Zur Zusammenfassung')",
         "button:has-text('Weiter zur Zusammenfassung')",
-        "button:has-text('Weiter')",
-        # JS evaluate ile partial/case-insensitive eşleşme için fallback aşağıda
     ]
 
-    for attempt in range(5):
+    for attempt in range(3):
         if stop_event and stop_event.is_set():
             return False
 
-        # Sayfanın yüklenmesini bekle, ardından alt kısma in.
-        try:
-            page.wait_for_load_state("domcontentloaded", timeout=5000)
-        except Exception:
-            pass
+        # Her denemede alta in; Überprüfen genellikle sticky footer'da.
         try:
             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            page.wait_for_timeout(600)
+            page.wait_for_timeout(400)
         except Exception:
             pass
 
@@ -652,7 +634,7 @@ def _click_review(page: Page, log, stop_event=None) -> bool:
                 btn = page.locator(sel).first
                 if btn.count() == 0:
                     continue
-                btn.wait_for(state="visible", timeout=2500)
+                btn.wait_for(state="visible", timeout=2000)
                 if not btn.is_enabled():
                     continue
                 _scroll_to(page, btn)
@@ -663,34 +645,20 @@ def _click_review(page: Page, log, stop_event=None) -> bool:
             except Exception:
                 continue
 
-        # JS ile buton ara: metin içinde "prüf" geçen herhangi bir buton
-        try:
-            clicked = page.evaluate("""() => {
-                const btns = Array.from(document.querySelectorAll('button'));
-                const target = btns.find(b => /pr\u00fcf/i.test(b.innerText));
-                if (target && !target.disabled) { target.click(); return true; }
-                return false;
-            }""")
-            if clicked:
-                log(f"    Überprüfen JS ile tıklandı (deneme {attempt + 1}).")
-                _wait_for_review_page(page, stop_event, timeout_ms=10000)
-                return True
-        except Exception:
-            pass
-
-        # Submit sayfasına geçilmişse zaten başarılı.
+        # Ancak gerçek submit butonu görünüyorsa review adımı zaten geçilmiş demektir.
         if _is_on_review_page(page):
             log("    Özet sayfası tespit edildi — Bewerbung abschicken bekleniyor.")
             return True
 
-        log(f"    Überprüfen butonu bulunamadı (deneme {attempt + 1}/5), bekleniyor...")
-        page.wait_for_timeout(3500)
+        log(f"    Überprüfen butonu bulunamadı (deneme {attempt + 1}/3), bekleniyor...")
+        page.wait_for_timeout(2000)
 
+    # Son şans: submit butonu var mı?
     if _is_on_review_page(page):
         log("    Özet sayfası tespit edildi — devam ediliyor.")
         return True
 
-    log("    Überprüfen butonu 5 denemede de bulunamadı.")
+    log("    Überprüfen butonu 3 denemede de bulunamadı.")
     return False
 
 
